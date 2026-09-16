@@ -1,260 +1,484 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full bg-stone-950 text-stone-100">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Book Notes Reader & Admin</title>
-  
+  <title>Interactive PDF Book Reader & Publishing Studio</title>
+
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            book: {
+              paper: '#fdfbf7',
+              sepia: '#f4ebd0',
+              dark: '#1c1b18',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
   <!-- PDF.js Engine -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <!-- StPageFlip (Realistic Book Animation) -->
+  <!-- StPageFlip (Realistic 3D Book Engine) -->
   <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
-  <!-- Marked.js (Markdown Renderer) -->
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
 
   <style>
-    body {
-      background-color: #1a1917;
-      color: #e5e5e5;
-      font-family: serif;
-    }
-    .book-container {
-      perspective: 1500px;
+    /* Custom styling for realistic book canvas */
+    .stpageflip-container {
+      margin: 0 auto;
     }
     .page {
       background-color: #fdfbf7;
-      color: #2b2b2b;
-      box-shadow: inset 0 0 30px rgba(0,0,0,0.08);
       overflow: hidden;
-    }
-    .page-content {
-      width: 100%;
-      height: 100%;
+      box-shadow: inset 0 0 30px rgba(0,0,0,0.08);
       display: flex;
-      flex-direction: column;
-      justify-content: center;
       align-items: center;
+      justify-content: center;
+    }
+    .page-theme-sepia .page {
+      background-color: #f4ebd0;
+    }
+    .page-theme-dark .page {
+      background-color: #1a1917;
     }
     canvas {
       max-width: 100%;
       max-height: 100%;
       object-fit: contain;
+      pointer-events: none;
+    }
+    /* Hide scrollbars for clean reader layout */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
     }
   </style>
 </head>
-<body class="h-screen flex flex-col justify-between overflow-hidden select-none">
+<body class="h-full flex flex-col font-sans select-none overflow-hidden bg-stone-950">
 
-  <!-- Top Navigation Bar -->
-  <header class="h-14 border-b border-stone-800 bg-stone-950 px-6 flex items-center justify-between z-10">
+  <!-- Top Header Navigation -->
+  <header class="h-16 border-b border-stone-800 bg-stone-900/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
     <div class="flex items-center space-x-3">
-      <span class="text-xl font-bold tracking-wide text-amber-500 font-sans">📖 Notes Reader</span>
-      <span id="file-title" class="text-xs bg-stone-800 text-stone-400 px-2 py-1 rounded font-mono">No document loaded</span>
+      <div class="bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 text-amber-500">
+        <i data-lucide="book-open" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <h1 class="font-semibold text-stone-100 text-base leading-tight" id="doc-title">Notes Book Reader</h1>
+        <p class="text-xs text-stone-400" id="doc-subtitle font-mono">Loading repository data...</p>
+      </div>
     </div>
-    
-    <div class="flex items-center space-x-4 font-sans text-sm">
-      <span id="page-indicator" class="text-stone-400">Page 0 / 0</span>
-      <button id="open-admin-btn" class="bg-amber-600 hover:bg-amber-500 text-stone-950 font-medium px-4 py-1.5 rounded transition">
-        ⚙️ Upload / Admin
+
+    <!-- Active Note Selector & Control Bar -->
+    <div class="flex items-center space-x-4">
+      <div id="notes-dropdown-container" class="hidden">
+        <select id="notes-select" class="bg-stone-800 border border-stone-700 text-stone-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-amber-500">
+          <!-- Dynamic options loaded from notes-data.json -->
+        </select>
+      </div>
+
+      <div class="h-4 w-px bg-stone-800"></div>
+
+      <!-- Theme Switcher -->
+      <div class="flex items-center bg-stone-800/80 p-1 rounded-lg border border-stone-700/50">
+        <button onclick="setTheme('paper')" class="px-2.5 py-1 text-xs rounded-md transition text-stone-300 hover:text-white" title="Paper Theme">⚪ Light</button>
+        <button onclick="setTheme('sepia')" class="px-2.5 py-1 text-xs rounded-md transition text-amber-200/70 hover:text-amber-200" title="Sepia Theme">📜 Sepia</button>
+        <button onclick="setTheme('dark')" class="px-2.5 py-1 text-xs rounded-md transition text-stone-400 hover:text-white" title="Dark Theme">🌙 Dark</button>
+      </div>
+
+      <button id="open-admin-btn" class="flex items-center space-x-2 bg-amber-600 hover:bg-amber-500 text-stone-950 text-xs font-semibold px-3.5 py-2 rounded-lg transition shadow-lg shadow-amber-600/10">
+        <i data-lucide="shield-check" class="w-4 h-4"></i>
+        <span>Admin Studio</span>
       </button>
     </div>
   </header>
 
-  <!-- Main Canvas / FlipBook Container -->
-  <main class="flex-1 flex items-center justify-center relative p-4">
-    <!-- Dropzone Placeholder when empty -->
-    <div id="drop-zone" class="border-2 border-dashed border-stone-700 rounded-2xl p-12 text-center max-w-md cursor-pointer hover:border-amber-500 transition bg-stone-900/40">
-      <div class="text-5xl mb-4">📚</div>
-      <h2 class="text-xl font-bold text-stone-200 mb-2 font-sans">Drop your PDF or MD File Here</h2>
-      <p class="text-sm text-stone-400 font-sans mb-4">Files process purely inside your browser — zero data leaves your machine.</p>
-      <label class="inline-block bg-amber-600 hover:bg-amber-500 text-stone-950 font-medium px-4 py-2 rounded cursor-pointer font-sans transition">
-        Select Local File
-        <input type="file" id="file-input" accept=".pdf,.md" class="hidden">
-      </label>
+  <!-- Main Canvas View / Book Container -->
+  <main class="flex-1 flex items-center justify-center relative p-4 overflow-hidden" id="main-viewport">
+    <!-- Loading State Screen -->
+    <div id="loading-spinner" class="flex flex-col items-center justify-center space-y-4">
+      <div class="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin"></div>
+      <p class="text-xs text-stone-400 font-mono" id="loading-text">Rendering PDF pages into 3D Book...</p>
     </div>
 
-    <!-- The Animated Flipbook -->
-    <div class="book-container hidden" id="book-wrapper">
+    <!-- Empty State / No File Configured -->
+    <div id="empty-state" class="hidden text-center max-w-sm p-8 bg-stone-900/50 border border-stone-800 rounded-2xl backdrop-blur-md">
+      <div class="w-12 h-12 bg-amber-500/10 text-amber-500 rounded-xl flex items-center justify-center mx-auto mb-4">
+        <i data-lucide="file-warning" class="w-6 h-6"></i>
+      </div>
+      <h3 class="text-stone-200 font-medium mb-1">No Notes Uploaded Yet</h3>
+      <p class="text-xs text-stone-400 mb-6">Click Admin Studio above to publish your first PDF note directly to GitHub.</p>
+      <button onclick="openAdminModal()" class="w-full bg-amber-600 hover:bg-amber-500 text-stone-950 text-xs font-semibold py-2.5 rounded-lg transition">
+        Open Admin Studio
+      </button>
+    </div>
+
+    <!-- Realistic 3D Book Container -->
+    <div id="book-container" class="hidden relative w-full h-full flex items-center justify-center">
       <div id="flipbook"></div>
     </div>
   </main>
 
-  <!-- Bottom Page Controls -->
-  <footer id="controls" class="h-14 border-t border-stone-800 bg-stone-950 px-6 flex items-center justify-center space-x-6 z-10 hidden font-sans">
-    <button id="prev-btn" class="bg-stone-800 hover:bg-stone-700 text-stone-200 px-4 py-1.5 rounded transition">
-      ◀ Previous
+  <!-- Bottom Interactive Page Controls Bar -->
+  <footer id="reader-controls" class="h-14 border-t border-stone-800 bg-stone-900/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0 hidden">
+    <button id="prev-page-btn" class="flex items-center space-x-2 bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs px-4 py-2 rounded-lg transition border border-stone-700">
+      <i data-lucide="chevron-left" class="w-4 h-4"></i>
+      <span>Previous</span>
     </button>
-    <button id="next-btn" class="bg-stone-800 hover:bg-stone-700 text-stone-200 px-4 py-1.5 rounded transition">
-      Next ▶
+
+    <div class="flex items-center space-x-3">
+      <span id="page-counter" class="text-xs font-mono text-stone-400">Page 1 of --</span>
+      <div class="h-3 w-px bg-stone-800"></div>
+      <button id="sound-toggle-btn" onclick="toggleSound()" class="text-stone-400 hover:text-amber-500 text-xs flex items-center space-x-1" title="Toggle Page Flip Sound">
+        <i data-lucide="volume-2" class="w-4 h-4" id="sound-icon"></i>
+      </button>
+    </div>
+
+    <button id="next-page-btn" class="flex items-center space-x-2 bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs px-4 py-2 rounded-lg transition border border-stone-700">
+      <span>Next</span>
+      <i data-lucide="chevron-right" class="w-4 h-4"></i>
     </button>
   </footer>
 
-  <!-- Admin Panel Drawer -->
-  <div id="admin-panel" class="fixed inset-y-0 right-0 w-96 bg-stone-900 border-l border-stone-800 transform translate-x-full transition-transform duration-300 z-50 p-6 flex flex-col font-sans">
-    <div class="flex justify-between items-center mb-6">
-      <h2 class="text-lg font-bold text-amber-500">Admin Upload Panel</h2>
-      <button id="close-admin-btn" class="text-stone-400 hover:text-white text-xl">✕</button>
-    </div>
-    
-    <div class="space-y-4 flex-1 overflow-y-auto">
-      <div class="bg-stone-800 p-4 rounded-lg">
-        <h3 class="text-sm font-semibold text-stone-200 mb-2">Upload New Note File</h3>
-        <input type="file" id="admin-file-input" accept=".pdf,.md" class="block w-full text-xs text-stone-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-amber-600 file:text-stone-950 hover:file:bg-amber-500">
+  <!-- Admin Modal Window -->
+  <div id="admin-modal" class="fixed inset-0 bg-stone-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-stone-900 border border-stone-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+      <!-- Modal Header -->
+      <div class="p-5 border-b border-stone-800 flex items-center justify-between">
+        <div class="flex items-center space-x-2 text-amber-500">
+          <i data-lucide="upload-cloud" class="w-5 h-5"></i>
+          <h2 class="font-semibold text-stone-100 text-sm">GitHub Publishing Studio</h2>
+        </div>
+        <button onclick="closeAdminModal()" class="text-stone-400 hover:text-stone-100 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
       </div>
 
-      <div class="bg-stone-800 p-4 rounded-lg">
-        <h3 class="text-sm font-semibold text-stone-200 mb-2">Host Permanent Notes</h3>
-        <p class="text-xs text-stone-400 leading-relaxed mb-3">
-          To display notes by default without uploading every time:
-        </p>
-        <ol class="text-xs text-stone-400 list-decimal list-inside space-y-1 font-mono">
-          <li>Drop your file into your GitHub repo root directory.</li>
-          <li>Rename it to <code class="text-amber-400">notes.pdf</code> or <code class="text-amber-400">notes.md</code>.</li>
-          <li>Push changes to deploy automatically!</li>
-        </ol>
+      <!-- Auth Gate Screen -->
+      <div id="auth-gate" class="p-6 space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-stone-300 mb-1">Enter Admin Password</label>
+          <input type="password" id="admin-pass-input" placeholder="Default: admin123" class="w-full bg-stone-800 border border-stone-700 rounded-lg px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500">
+        </div>
+        <button onclick="verifyAdminPass()" class="w-full bg-amber-600 hover:bg-amber-500 text-stone-950 font-semibold text-xs py-2.5 rounded-lg transition">
+          Unlock Studio
+        </button>
+      </div>
+
+      <!-- Upload Form Screen (Hidden by default) -->
+      <div id="admin-form" class="p-6 space-y-4 hidden">
+        <div>
+          <label class="block text-xs font-medium text-stone-300 mb-1">GitHub Owner/Repo</label>
+          <input type="text" id="gh-repo-input" placeholder="e.g. username/my-notes-repo" class="w-full bg-stone-800 border border-stone-700 rounded-lg px-3 py-2 text-xs text-stone-100 font-mono focus:outline-none focus:border-amber-500">
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-stone-300 mb-1">GitHub Personal Access Token (PAT)</label>
+          <input type="password" id="gh-token-input" placeholder="ghp_xxxxxxxxxxxx" class="w-full bg-stone-800 border border-stone-700 rounded-lg px-3 py-2 text-xs text-stone-100 font-mono focus:outline-none focus:border-amber-500">
+          <p class="text-[10px] text-stone-500 mt-1">Requires 'contents:write' repo permission.</p>
+        </div>
+
+        <div class="border-t border-stone-800 pt-3">
+          <label class="block text-xs font-medium text-stone-300 mb-1">Note Title</label>
+          <input type="text" id="note-title-input" placeholder="e.g. Organic Chemistry Chapter 1" class="w-full bg-stone-800 border border-stone-700 rounded-lg px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500">
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-stone-300 mb-1">Select PDF File</label>
+          <input type="file" id="pdf-file-input" accept="application/pdf" class="w-full text-xs text-stone-400 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-stone-800 file:text-stone-200 hover:file:bg-stone-700 cursor-pointer">
+        </div>
+
+        <div id="upload-status" class="text-xs text-center py-1 font-mono hidden"></div>
+
+        <button id="commit-btn" onclick="commitToGithub()" class="w-full bg-amber-600 hover:bg-amber-500 text-stone-950 font-semibold text-xs py-2.5 rounded-lg transition flex items-center justify-center space-x-2">
+          <i data-lucide="git-commit" class="w-4 h-4"></i>
+          <span>Publish & Sync to Repository</span>
+        </button>
       </div>
     </div>
   </div>
 
   <script>
-    // Configure PDF.js worker
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    // Set up PDF.js worker URL
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-    let pageFlip = null;
-    const dropZone = document.getElementById('drop-zone');
-    const fileInput = document.getElementById('file-input');
-    const adminFileInput = document.getElementById('admin-file-input');
-    const bookWrapper = document.getElementById('book-wrapper');
-    const flipbookEl = document.getElementById('flipbook');
-    const controls = document.getElementById('controls');
-    const pageIndicator = document.getElementById('page-indicator');
-    const fileTitle = document.getElementById('file-title');
+    // Application state
+    let pageFlipInstance = null;
+    let currentTheme = 'paper';
+    let soundEnabled = true;
+    let notesDatabase = [];
+    let currentNoteIndex = 0;
 
-    // Drag and Drop listeners
-    dropZone.addEventListener('dragover', (e) => e.preventDefault());
-    dropZone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-    });
-    fileInput.addEventListener('change', (e) => e.target.files.length && handleFile(e.target.files[0]));
-    adminFileInput.addEventListener('change', (e) => e.target.files.length && handleFile(e.target.files[0]));
-
-    // Auto-load repo notes.pdf or notes.md if present on page launch
-    window.addEventListener('DOMContentLoaded', async () => {
+    // Web Audio Synthesizer for Page Flip Sound
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playFlipSound() {
+      if (!soundEnabled) return;
       try {
-        let response = await fetch('notes.pdf');
-        if (response.ok) {
-          const blob = await response.blob();
-          handleFile(new File([blob], "notes.pdf"));
-          return;
+        const bufferSize = audioCtx.sampleRate * 0.12;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
         }
-        response = await fetch('notes.md');
-        if (response.ok) {
-          const text = await response.text();
-          renderMarkdownAsBook(text, "notes.md");
+
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 800;
+
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        noise.start();
+      } catch (e) {
+        // Handle audio context restrictions on un-clicked browsers
+      }
+    }
+
+    function toggleSound() {
+      soundEnabled = !soundEnabled;
+      const icon = document.getElementById('sound-icon');
+      icon.setAttribute('data-lucide', soundEnabled ? 'volume-2' : 'volume-x');
+      lucide.createIcons();
+    }
+
+    // App Startup
+    window.addEventListener('DOMContentLoaded', async () => {
+      // Restore saved local config if available
+      document.getElementById('gh-repo-input').value = localStorage.getItem('gh_repo') || '';
+      document.getElementById('gh-token-input').value = localStorage.getItem('gh_token') || '';
+
+      await loadNotesData();
+    });
+
+    // Fetch notes-data.json from repo
+    async function loadNotesData() {
+      showLoading(true, "Fetching publication repository data...");
+      try {
+        const res = await fetch('notes-data.json?t=' + Date.now());
+        if (res.ok) {
+          notesDatabase = await res.json();
+          if (notesDatabase && notesDatabase.length > 0) {
+            setupNotesDropdown();
+            await renderNoteBook(notesDatabase[0]);
+          } else {
+            showEmptyState();
+          }
+        } else {
+          showEmptyState();
         }
       } catch (err) {
-        // Fallback to manual file upload if default notes aren't hosted yet
-      }
-    });
-
-    async function handleFile(file) {
-      fileTitle.textContent = file.name;
-      dropZone.classList.add('hidden');
-      bookWrapper.classList.remove('hidden');
-      controls.classList.remove('hidden');
-
-      if (file.name.endsWith('.pdf')) {
-        const buffer = await file.arrayBuffer();
-        renderPdfAsBook(buffer);
-      } else if (file.name.endsWith('.md')) {
-        const text = await file.text();
-        renderMarkdownAsBook(text, file.name);
+        showEmptyState();
       }
     }
 
-    // Render PDF pages into realistic PageFlip elements
-    async function renderPdfAsBook(arrayBuffer) {
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      flipbookEl.innerHTML = '';
-
-      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
-        const viewport = page.getViewport({ scale: 1.5 });
-        
-        const pageDiv = document.createElement('div');
-        pageDiv.className = 'page';
-        
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-
-        await page.render({ canvasContext: context, viewport: viewport }).promise;
-        
-        const contentDiv = document.createElement('div');
-        contentDiv.className = 'page-content';
-        contentDiv.appendChild(canvas);
-        pageDiv.appendChild(contentDiv);
-        flipbookEl.appendChild(pageDiv);
-      }
-
-      initPageFlip(500, 700);
-    }
-
-    // Convert Markdown into paginated text pages
-    function renderMarkdownAsBook(mdText, filename) {
-      flipbookEl.innerHTML = '';
-      const htmlContent = marked.parse(mdText);
+    function setupNotesDropdown() {
+      const dropdown = document.getElementById('notes-select');
+      const container = document.getElementById('notes-dropdown-container');
+      dropdown.innerHTML = '';
       
-      // Basic paragraph splitter to turn long markdown text into distinct pages
-      const blocks = htmlContent.split(/(?=<h[1-3])/g);
-      
-      blocks.forEach((blockHtml) => {
-        const pageDiv = document.createElement('div');
-        pageDiv.className = 'page p-8 font-serif leading-relaxed text-stone-800 text-sm overflow-hidden';
-        pageDiv.innerHTML = `<div class="prose max-w-none">${blockHtml}</div>`;
-        flipbookEl.appendChild(pageDiv);
+      notesDatabase.forEach((note, idx) => {
+        const option = document.createElement('option');
+        option.value = idx;
+        option.textContent = note.title;
+        dropdown.appendChild(option);
       });
 
-      initPageFlip(450, 600);
+      container.classList.remove('hidden');
+      dropdown.addEventListener('change', async (e) => {
+        currentNoteIndex = parseInt(e.target.value);
+        await renderNoteBook(notesDatabase[currentNoteIndex]);
+      });
     }
 
-    // Initialize PageFlip instance
-    function initPageFlip(width, height) {
-      if (pageFlip) pageFlip.destroy();
+    // Render Raw PDF Data into 3D FlipBook
+    async function renderNoteBook(noteItem) {
+      showLoading(true, `Rendering '${noteItem.title}' into 3D Book...`);
+      document.getElementById('doc-title').textContent = noteItem.title;
+      document.getElementById('doc-subtitle').textContent = `Published: ${noteItem.date || 'Recent'}`;
 
-      pageFlip = new St.PageFlip(flipbookEl, {
-        width: width,
-        height: height,
+      const flipbookContainer = document.getElementById('flipbook');
+      flipbookContainer.innerHTML = '';
+
+      try {
+        // Base64 to ArrayBuffer decode
+        const binaryString = atob(noteItem.pdfBase64.split(',')[1] || noteItem.pdfBase64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        const pdf = await pdfjsLib.getDocument({ data: bytes.buffer }).promise;
+        const pageCount = pdf.numPages;
+
+        for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 1.5 });
+
+          const pageDiv = document.createElement('div');
+          pageDiv.className = 'page';
+
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+
+          await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+          pageDiv.appendChild(canvas);
+          flipbookContainer.appendChild(pageDiv);
+        }
+
+        initStPageFlip();
+        showLoading(false);
+      } catch (err) {
+        console.error(err);
+        alert('Error rendering PDF document. The file may be corrupt.');
+        showEmptyState();
+      }
+    }
+
+    function initStPageFlip() {
+      if (pageFlipInstance) {
+        pageFlipInstance.destroy();
+      }
+
+      const viewportWidth = document.getElementById('main-viewport').clientWidth;
+      const isMobile = viewportWidth < 768;
+      const bookWidth = isMobile ? Math.min(viewportWidth - 20, 420) : 480;
+      const bookHeight = isMobile ? 580 : 680;
+
+      pageFlipInstance = new St.PageFlip(document.getElementById('flipbook'), {
+        width: bookWidth,
+        height: bookHeight,
         size: "fixed",
         minWidth: 300,
         maxWidth: 1000,
         minHeight: 400,
-        maxHeight: 1400,
-        maxShadowOpacity: 0.5,
+        maxHeight: 1200,
+        maxShadowOpacity: 0.4,
         showCover: true,
         mobileScrollSupport: false
       });
 
-      pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+      const pages = document.querySelectorAll('.page');
+      pageFlipInstance.loadFromHTML(pages);
 
-      pageFlip.on('flip', (e) => {
-        pageIndicator.textContent = `Page ${e.data + 1} /${pageFlip.getPageCount()}`;
+      // Event Handlers
+      pageFlipInstance.on('flip', (e) => {
+        playFlipSound();
+        updatePageCounter(e.data + 1, pageFlipInstance.getPageCount());
       });
 
-      pageIndicator.textContent = `Page 1 / ${pageFlip.getPageCount()}`;
+      updatePageCounter(1, pageFlipInstance.getPageCount());
     }
 
-    // Controls
-    document.getElementById('prev-btn').addEventListener('click', () => pageFlip?.flipPrev());
-    document.getElementById('next-btn').addEventListener('click', () => pageFlip?.flipNext());
+    function updatePageCounter(current, total) {
+      document.getElementById('page-counter').textContent = `Page ${current} of ${total}`;
+    }
 
-    // Drawer toggles
-    const adminPanel = document.getElementById('admin-panel');
-    document.getElementById('open-admin-btn').addEventListener('click', () => adminPanel.classList.remove('translate-x-full'));
-    document.getElementById('close-admin-btn').addEventListener('click', () => adminPanel.classList.add('translate-x-full'));
-  </script>
-</body>
-</html>
+    // Nav Controls
+    document.getElementById('prev-page-btn').addEventListener('click', () => pageFlipInstance?.flipPrev());
+    document.getElementById('next-page-btn').addEventListener('click', () => pageFlipInstance?.flipNext());
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') pageFlipInstance?.flipPrev();
+      if (e.key === 'ArrowRight') pageFlipInstance?.flipNext();
+    });
+
+    // Theme Switcher
+    function setTheme(theme) {
+      currentTheme = theme;
+      const viewport = document.getElementById('main-viewport');
+      viewport.className = 'flex-1 flex items-center justify-center relative p-4 overflow-hidden ';
+      
+      if (theme === 'paper') viewport.classList.add('bg-stone-950');
+      if (theme === 'sepia') viewport.classList.add('bg-[#120f0a]');
+      if (theme === 'dark') viewport.classList.add('bg-black');
+    }
+
+    // Modal Control & Auth Gate
+    function openAdminModal() {
+      document.getElementById('admin-modal').classList.remove('hidden');
+    }
+
+    function closeAdminModal() {
+      document.getElementById('admin-modal').classList.add('hidden');
+    }
+
+    document.getElementById('open-admin-btn').addEventListener('click', openAdminModal);
+
+    function verifyAdminPass() {
+      const pass = document.getElementById('admin-pass-input').value;
+      if (pass === 'admin123' || pass === 'admin') {
+        document.getElementById('auth-gate').classList.add('hidden');
+        document.getElementById('admin-form').classList.remove('hidden');
+      } else {
+        alert('Incorrect Password. Access Denied.');
+      }
+    }
+
+    // Upload & Commit directly to GitHub Repository
+    async function commitToGithub() {
+      const repo = document.getElementById('gh-repo-input').value.trim();
+      const token = document.getElementById('gh-token-input').value.trim();
+      const title = document.getElementById('note-title-input').value.trim();
+      const fileInput = document.getElementById('pdf-file-input');
+      const statusEl = document.getElementById('upload-status');
+
+      if (!repo || !token || !title || !fileInput.files.length) {
+        alert('Please fill out all fields and select a PDF note file.');
+        return;
+      }
+
+      // Save credentials for reuse
+      localStorage.setItem('gh_repo', repo);
+      localStorage.setItem('gh_token', token);
+
+      statusEl.textContent = 'Reading PDF File...';
+      statusEl.className = 'text-xs text-center py-1 font-mono text-amber-400';
+      statusEl.classList.remove('hidden');
+
+      const file = fileInput.files[0];
+      const reader = new FileReader();
+
+      reader.onload = async (e) => {
+        try {
+          const base64Data = e.target.result;
+          
+          // Append new note entry to payload array
+          const newNote = {
+            id: 'note_' + Date.now(),
+            title: title,
+            date: new Date().toLocaleDateString(),
+            pdfBase64: base64Data
+          };
+
+          const updatedDatabase = [newNote, ...notesDatabase];
+          const updatedJsonString = JSON.stringify(updatedDatabase, null, 2);
+
+          statusEl.textContent = 'Committing to GitHub via REST API...';
+
+          // Check if file already exists in repo to get SHA
+          let sha = null;
+          const getFileUrl = `https://api.github.com/repos/${repo}/contents/notes-d
