@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NotesBook — Read</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <a href="#" class="logo" onclick="showHome();return false">📖 NotesBook</a>
+    <button class="adminBtn" onclick="showAdmin()">Admin</button>
+  </header>
+
+  <section id="home" class="screen">
+    <div class="hero">
+      <div class="kicker">YOUR DIGITAL NOTEBOOK</div>
+      <h1>Read notes<br><i>like a real book.</i></h1>
+      <p>Upload a PDF or images in Admin and NotesBook automatically turns them into a page-by-page reading experience.</p>
+      <button class="openBtn" onclick="document.getElementById('library').scrollIntoView({behavior:'smooth'})">Open Library →</button>
+    </div>
+    <div class="library" id="library">
+      <div class="sectionTitle"><div><small>LIBRARY</small><h2>Your Notes</h2></div><span id="noteCount"></span></div>
+      <div id="notesGrid" class="notesGrid"></div>
+    </div>
+  </section>
+
+  <section id="admin" class="screen hidden">
+    <div class="adminWrap">
+      <button class="back" onclick="showHome()">← Library</button>
+      <div class="kicker">PRIVATE ADMIN AREA</div>
+      <h2>Upload notes</h2>
+      <p class="muted">Choose a PDF or multiple images. The website automatically creates the book pages.</p>
+
+      <div class="uploadBox">
+        <label>Book / Chapter title<input id="bookTitle" placeholder="e.g. Kinematics Notes"></label>
+        <label>Subject<input id="bookSubject" placeholder="e.g. Physics"></label>
+        <label>Description<input id="bookDesc" placeholder="Optional short description"></label>
+        <label class="fileLabel">Choose PDF or images
+          <input id="fileInput" type="file" accept=".pdf,image/*" multiple>
+        </label>
+        <div id="fileInfo" class="fileInfo">No file selected</div>
+        <button id="uploadBtn" class="openBtn" onclick="createBook()">Create Book →</button>
+        <div id="status" class="status"></div>
+      </div>
+
+      <div class="adminList">
+        <div class="sectionTitle"><div><small>MANAGE</small><h3>Uploaded books</h3></div></div>
+        <div id="adminBooks"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="reader" class="screen hidden">
+    <div class="readerTop">
+      <button class="back" onclick="closeReader()">← Library</button>
+      <div class="readerName"><small id="readerSubject"></small><strong id="readerTitle"></strong></div>
+      <button class="soundBtn" id="soundBtn" onclick="toggleSound()">🔊</button>
+    </div>
+
+    <div class="bookArea">
+      <div class="book" id="book">
+        <div class="page backPage"></div>
+        <div class="page currentPage" id="currentPage"></div>
+        <div class="page nextPage" id="nextPage"></div>
+      </div>
+    </div>
+
+    <div class="readerControls">
+      <button id="prevBtn" onclick="turn(-1)">‹</button>
+      <div class="pageInfo"><span id="pageText">1 / 1</span><div class="progress"><i id="progress"></i></div></div>
+      <button id="nextBtn" onclick="turn(1)">›</button>
+    </div>
+    <div class="hint">Tap the page or use the arrows · Swipe left/right on mobile</div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs" type="module"></script>
+<script src="app.js" type="module"></script>
+</body>
+</html>
