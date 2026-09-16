@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-stone-950 text-stone-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive PDF Book Reader & Publishing Studio</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            amber: {
+              400: '#fbbf24',
+              500: '#f59e0b',
+              600: '#d97706',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- PDF.js Engine -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- StPageFlip (Realistic 3D Book Engine) -->
+  <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    /* Book canvas & realistic styling */
+    body {
+      background-color: #121110;
+      color: #e5e5e5;
+    }
+    .page {
+      background-color: #f4ebd0;
+      overflow: hidden;
+      box-shadow: inset 0 0 30px rgba(0,0,0,0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+    }
+    .book-spine-shadow {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 30px;
+      transform: translateX(-50%);
+      background: linear-gradient(to right, rgba(0,0,0,0.25), rgba(0,0,0,0) 50%, rgba(0,0,0,0.25));
+      pointer-events: none;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans select-none overflow-hidden">
+
+  <!-- Top Header Navigation -->
+  <header class="h-16 border-b border-stone-800 bg-stone-900/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+    <div class="flex items-center space-x-3">
+      <div class="bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 text-amber-500">
+        <i data-lucide="book-open" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <h1 class="font-bold text-stone-100 text-base tracking-wide flex items-center space-x-2" id="doc-title">
+          <span>Notes Reader</span>
+        </h1>
+        <p class="text-xs text-amber-500/80 font-mono" id="doc-subtitle">3D PDF Reader</p>
+      </div>
+    </div>
+
+    <!-- Active Note Selector & Admin Button -->
+    <div class="flex items-center space-x-4">
+      <div id="notes-dropdown-container" class="hidden">
+        <select id="notes-select" class="bg-stone-800 border border-stone-700 text-amber-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-amber-500">
+          <!-- Dynamic options loaded from notes-data.json -->
+        </select>
+      </div>
+
+      <button id="open-admin-btn" class="flex items-center space-x-2 bg-amber-600 hover:bg-amber-500 text-stone-950 text-xs font-semibold px-4 py-2 rounded-lg transition shadow-lg shadow-amber-600/10">
+        <i data-lucide="shield-check" class="w-4 h-4"></i>
+        <span>Admin Studio</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Viewport / Book Container -->
+  <main class="flex-1 flex items-center justify-center relative p-4 overflow-hidden" id="main-viewport">
+    
+    <!-- Loading Screen -->
+    <div id="loading-spinner" class="flex flex-col items-center justify-center space-y-4">
+      <div class="w-12 h-12 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin"></div>
+      <p class="text-xs text-amber-500/80 font-mono tracking-wider" id="loading-text">Loading repository notes...</p>
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty-state" class="hidden text-center max-w-sm p-8 bg-stone-900/60 border border-stone-800 rounded-2xl backdrop-blur-md shadow-2xl">
+      <div class="w-14 h-14 bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-500/20">
+        <i data-lucide="file-warning" class="w-7 h-7"></i>
+      </div>
+      <h3 class="text-stone-200 font-semibold mb-1 text-base">No Notes Published Yet</h3>
+      <p class="text-xs text-stone-400 mb-6 leading-relaxed">Use the Admin Studio to upload your PDF notes. They will be committed to your repository and visible to everyone.</p>
+      <button onclick="openAdminModal()" class="w-full bg-amber-600 hover:bg-amber-500 text-stone-950 text-xs font-bold py-2.5 rounded-lg transition shadow-md shadow-amber-600/20">
+        Open Admin Studio
+      </button>
+    </div>
+
+    <!-- 3D Book Canvas Container -->
+    <div id="book-container" class="hidden relative">
+      <div class="book-spine-shadow" id="spine-shadow"></div>
+      <div id="flipbook"></div>
+    </div>
+  </main>
+
+  <!-- Bottom Navigation Bar -->
+  <footer id="reader-controls" class="h-14 border-t border-stone-800 bg-stone-900/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0 hidden">
+    <button id="prev-page-btn" class="flex items-center space-x-2 bg-stone-800 hover:bg-stone-700 text-amber-200 text-xs font-medium px-4 py-2 rounded-lg transition border border-stone-700">
+      <i data-lucide="chevron-left" class="w-4 h-4"></i>
+      <span>Previous Page</span>
+    </button>
+
+    <div class="flex items-center space-x-4">
+      <span id="page-counter" class="text-xs font-mono text-amber-400/90 bg-stone-950 px-3 py-1 rounded-md border border-stone-800">Page 1 of --</span>
+      <button id="sound-toggle-btn" onclick="toggleSound()" class="text-stone-400 hover:text-amber-500 transition" title="Toggle Page Flip Sound">
+        <i data-lucide="volume-2" class="w-4 h-4" id="sound-icon"></i>
+      </button>
+    </div>
+
+    <button id="next-page-btn" class="flex items-center space-x-2 bg-stone-800 hover:bg-stone-700 text-amber-200 text-xs font-medium px-4 py-2 rounded-lg transition border border-stone-700">
+      <span>Next Page</span>
+      <i data-lucide="chevron-right" class="w-4 h-4"></i>
+    </button>
+  </footer>
+
+  <!-- Admin Modal -->
+  <div id="admin-modal" class="fixed inset-0 bg-stone-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-stone-900 border border-stone-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+      
+      <!-- Modal Header -->
+      <div class="p-5 border-b border-stone-800 flex items-center justify-between">
+        <div class="flex items-center space-x-2 text-amber-500">
+          <i data-lucide="shield-check" class="w-5 h-5"></i>
+          <h2 class="font-bold text-stone-100 text-sm tracking-wide">Admin Studio</h2>
+        </div>
+        <button onclick="closeAdminModal()" class="text-stone-400 hover:text-stone-100 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Auth Screen -->
+      <div id="auth-gate" class="p-6 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-stone-300 mb-1">Enter Admin Password</label>
+          <input type="password" id="admin-pass-input" placeholder="Default: admin123" class="w-full bg-stone-800 border border-stone-700 rounded-lg px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 font-mono">
+        </div>
+        <button onclick="verifyAdminPass()" class="w-full bg-amber-600 hover:bg-amber-500 text-stone-950 font-bold text-xs py-2.5 rounded-lg transition">
+          Unlock Studio
+        </button>
+      </div>
+
+      <!-- Upload Screen -->
+      <div id="admin-form" class="p-6 space-y-4 hidden">
+        <div>
+          <label class="block text-xs font-semibold text-stone-300 mb-1">GitHub Repository (Owner/Repo)</label>
+          <input type="text" id="gh-repo-input" placeholder="e.g. username/my-notes" class="w-full bg-stone-800 border border-stone-700 rounded-lg px-3 py-2 text-xs text-stone-100 font-mono focus:outline-none focus:border-amber-500">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-stone-300 mb-1">GitHub Personal Access Token (PAT)</label>
+          <input type="password" id="gh-token-input" placeholder="ghp_xxxxxxxxxxxx" class="w-full bg-stone-800 border border-stone-700 rounded-lg px-3 py-2 text-xs text-stone-100 font-mono focus:outline-none focus:border-amber-500">
+          <p class="text-[10px] text-stone-500 mt-1">Requires 'contents:write' permission to update notes-data.json.</p>
+        </div>
+
+        <div class="border-t border-stone-800 pt-3">
+          <label class="block text-xs font-semibold text-stone-300 mb-1">Note Title</label>
+          <input type="text" id="note-title-input" placeholder="e.g. Chapter 1 Notes" class="w-full bg-stone-800 border border-stone-700 rounded-lg px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-stone-300 mb-1">Select PDF File</label>
+          <input type="file" id="pdf-file-input" accept="application/pdf" class="w-full text-xs text-stone-400 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-stone-800 file:text-amber-200 hover:file:bg-stone-700 cursor-pointer">
+        </div>
+
+        <div id="upload-status" class="text-xs text-center py-1 font-mono hidden"></div>
+
+        <button id="commit-btn" onclick="commitToGithub()" class="w-full bg-amber-600 hover:bg-amber-500 text-stone-950 font-bold text-xs py-2.5 rounded-lg transition flex items-center justify-center space-x-2 shadow-lg shadow-amber-600/20">
+          <i data-lucide="upload" class="w-4 h-4"></i>
+          <span>Publish PDF Note to GitHub</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Lucide Icons
+    lucide.createIcons();
+
+    // PDF.js worker URL setup
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let pageFlipInstance = null;
+    let soundEnabled = true;
+    let notesDatabase = [];
+    let currentNoteIndex = 0;
+
+    // Web Audio Synthesizer for Page Turn Sound
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playFlipSound() {
+      if (!soundEnabled) return;
+      try {
+        const bufferSize = audioCtx.sampleRate * 0.12;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 800;
+
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        noise.start();
+      } catch (e) {}
+    }
+
+    function toggleSound() {
+      soundEnabled = !soundEnabled;
+      const icon = document.getElementById('sound-icon');
+      icon.setAttribute('data-lucide', soundEnabled ? 'volume-2' : 'volume-x');
+      lucide.createIcons();
+    }
+
+    // App Initialization
+    window.addEventListener('DOMContentLoaded', async () => {
+      document.getElementById('gh-repo-input').value = localStorage.getItem('gh_repo') || '';
+      document.getElementById('gh-token-input').value = localStorage.getItem('gh_token') || '';
+      await loadNotesData();
+    });
+
+    async function loadNotesData() {
+      showLoading(true, "Fetching repository publication data...");
+      try {
+        const res = await fetch('notes-data.json?t=' + Date.now());
+        if (res.ok) {
+          notesDatabase = await res.json();
+          if (notesDatabase && notesDatabase.length > 0) {
+            setupNotesDropdown();
+            await renderNoteBook(notesDatabase[0]);
+          } else {
+            showEmptyState();
+          }
+        } else {
+          showEmptyState();
+        }
+      } catch (err) {
+        showEmptyState();
+      }
+    }
+
+    function setupNotesDropdown() {
+      const dropdown = document.getElementById('notes-select');
+      const container = document.getElementById('notes-dropdown-container');
+      dropdown.innerHTML = '';
+      
+      notesDatabase.forEach((note, idx) => {
+        const option = document.createElement('option');
+        option.value = idx;
+        option.textContent = note.title;
+        dropdown.appendChild(option);
+      });
+
+      container.classList.remove('hidden');
+      dropdown.addEventListener('change', async (e) => {
+        currentNoteIndex = parseInt(e.target.value);
+        await renderNoteBook(notesDatabase[currentNoteIndex]);
+      });
+    }
+
+    // PDF Canvas Rendering Function
+    async function renderNoteBook(noteItem) {
+      showLoading(true, `Rendering visual pages for '${noteItem.title}'...`);
+      document.getElementById('doc-title').innerHTML = `<span>${noteItem.title}</span>`;
+      document.getElementById('doc-subtitle').textContent = `Published: ${noteItem.date || 'Recent'}`;
+
+      const flipbookContainer = document.getElementById('flipbook');
+      flipbookContainer.innerHTML = '';
+
+      try {
+        // Decode Base64 string to array buffer
+        const binaryString = atob(noteItem.pdfBase64.split(',')[1] || noteItem.pdfBase64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        const pdf = await pdfjsLib.getDocument({ data: bytes.buffer }).promise;
+        const pageCount = pdf.numPages;
+
+        for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 1.5 });
+
+          const pageDiv = document.createElement('div');
+          pageDiv.className = 'page';
+
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+
+          await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+          pageDiv.appendChild(canvas);
+          flipbookContainer.appendChild(pageDiv);
+        }
+
+        initStPageFlip();
+        showLoading(false);
+      } catch (err) {
+        console.error(err);
+        alert('Error rendering PDF document.');
+        showEmptyState();
+      }
+    }
+
+    function initStPageFlip() {
+      if (pageFlipInstance) {
+        pageFlipInstance.destroy();
+      }
+
+      const viewportWidth = document.getElementById('main-viewport').clientWidth;
+      const isMobile = viewportWidth < 768;
+      const bookWidth = isMobile ? Math.min(viewportWidth - 20, 420) : 460;
+      const bookHeight = isMobile ? 580 : 660;
+
+      pageFlipInstance = new St.PageFlip(document.getElementById('flipbook'), {
+        width: bookWidth,
+        height: bookHeight,
+        size: "fixed",
+        minWidth: 300,
+        maxWidth: 1000,
+        minHeight: 400,
+        maxHeight: 1200,
+        maxShadowOpacity: 0.5,
+        showCover: true,
+        mobileScrollSupport: false
+      });
+
+      const pages = document.querySelectorAll('.page');
+      pageFlipInstance.loadFromHTML(pages);
+
+      pageFlipInstance.on('flip', (e) => {
+        playFlipSound();
+        updatePageCounter(e.data + 1, pageFlipInstance.getPageCount());
+      });
+
+      updatePageCounter(1, pageFlipInstance.getPageCount());
+    }
+
+    function updatePageCounter(current, total) {
+      document.getElementById('page-counter').textContent = `Page ${current} of ${total}`;
+    }
+
+    // Control Handlers
+    document.getElementById('prev-page-btn').addEventListener('click', () => pageFlipInstance?.flipPrev());
+    document.getElementById('next-page-btn').addEventListener('click', () => pageFlipInstance?.flipNext());
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') pageFlipInstance?.flipPrev();
+      if (e.key === 'ArrowRight') pageFlipInstance?.flipNext();
+    });
+
+    // Admin Modal Toggles
+    function openAdminModal() {
+      document.getElementById('admin-modal').classList.remove('hidden');
+    }
+
+    function closeAdminModal() {
+      document.getElementById('admin-modal').classList.add('hidden');
+    }
+
+    document.getElementById('open-admin-btn').addEventListener('click', openAdminModal);
+
+    function verifyAdminPass() {
+      const pass = document.getElementById('admin-pass-input').value;
+      if (pass === 'admin123' || pass === 'admin') {
+        document.getElementById('auth-gate').classList.add('hidden');
+        document.getElementById('admin-form').classList.remove('hidden');
+      } else {
+        alert('Incorrect Password.');
+      }
+    }
+
+    // Direct GitHub Sync
+    async function commitToGithub() {
+      const repo = document.getElementById('gh-repo-input').value.trim();
+      const token = document.getElementById('gh-token-input').value.trim();
+      const title = document.getElementById('note-title-input').value.trim();
+      const fileInput = document.getElementById('pdf-file-input');
+      const statusEl = document.getElementById('upload-status');
+
+      if (!repo || !token || !title || !fileInput.files.length) {
+        alert('Please fill out all fields and choose a PDF file.');
+        return;
+      }
+
+      localStorage.setItem('gh_repo', repo);
+      localStorage.setItem('gh_token', token);
+
+      statusEl.textContent = 'Processing PDF data...';
+      statusEl.className = 'text-xs text-center py-1 font-mono text-amber-400';
+      statusEl.classList.remove('hidden');
+
+      const file = fileInput.files[0];
+      const reader = new FileReader();
+
+      reader.onload = async (e) => {
+        try {
+          const base64Data = e.target.result;
+          const newNote = {
+            id: 'note_' + Date.now(),
+            title: title,
+            date: new Date().toLocaleDateString(),
+            pdfBase64: base64Data
+          };
+
+          const updatedDatabase = [newNote, ...notesDatabase];
+          const updatedJsonString = JSON.stringify(updatedDatabase, null, 2);
+
+          statusEl.textContent = 'Committing to GitHub...';
+
+          let sha = null;
+          const getFileUrl = `https://api.github.com/repos/${repo}/contents/notes-data.json`;
+          
+          const existingRes = await fetch(getFileUrl, {
+            headers: { 'Authorization': `token ${token}` }
+          });
+
+          if (existingRes.ok) {
+            const existingData = await existingRes.json();
+            sha = existingData.sha;
+          }
+
+          const utf8Bytes = new TextEncoder().encode(updatedJsonString);
+          let binary = '';
+          utf8Bytes.forEach((b) => binary += String.fromCharCode(b));
+          const base64Content = btoa(binary);
+
+          const putRes = await fetch(getFileUrl, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `token ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              message: `Publish Note: ${title}`,
+              content: base64Content,
+              sha: sha || undefined
+            })
+          });
+
+          if (putRes.ok) {
+            statusEl.textContent = 'Successfully sync to GitHub!';
+            statusEl.className = 'text-xs text-center py-1 font-mono text-emerald-400';
+            setTimeout(() => {
+              closeAdminModal();
+              loadNotesData();
+            }, 1200);
+          } else {
+            const errData = await putRes.json();
+            throw new Error(errData.message || 'GitHub Sync Failed');
+          }
+
+        } catch (err) {
+          statusEl.textContent = 'Error: ' + err.message;
+          statusEl.className = 'text-xs text-center py-1 font-mono text-rose-400';
+        }
+      };
+
+      reader.readAsDataURL(file);
+    }
+
+    function showLoading(show, text = "") {
+      document.getElementById('loading-spinner').style.display = show ? 'flex' : 'none';
+      if (text) document.getElementById('loading-text').textContent = text;
+      document.getElementById('book-container').classList.toggle('hidden', show);
+      document.getElementById('empty-state').classList.add('hidden');
+      document.getElementById('reader-controls').classList.toggle('hidden', show);
+    }
+
+    function showEmptyState() {
+      document.getElementById('loading-spinner').style.display = 'none';
+      document.getElementById('book-container').classList.add('hidden');
+      document.getElementById('empty-state').classList.remove('hidden');
+      document.getElementById('reader-controls').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
