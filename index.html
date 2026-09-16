@@ -481,4 +481,72 @@
 
           // Check if file already exists in repo to get SHA
           let sha = null;
-          const getFileUrl = `https://api.github.com/repos/${repo}/contents/notes-d
+          const getFileUrl = `https://api.github.com/repos/${repo}/contents/notes-data.json`;
+          
+          const existingRes = await fetch(getFileUrl, {
+            headers: { 'Authorization': `token ${token}` }
+          });
+
+          if (existingRes.ok) {
+            const existingData = await existingRes.json();
+            sha = existingData.sha;
+          }
+
+          // Push updated JSON payload to GitHub
+          const utf8Bytes = new TextEncoder().encode(updatedJsonString);
+          let binary = '';
+          utf8Bytes.forEach((b) => binary += String.fromCharCode(b));
+          const base64Content = btoa(binary);
+
+          const putRes = await fetch(getFileUrl, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `token ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              message: `Publish Note: ${title}`,
+              content: base64Content,
+              sha: sha || undefined
+            })
+          });
+
+          if (putRes.ok) {
+            statusEl.textContent = 'Successfully published to GitHub!';
+            statusEl.className = 'text-xs text-center py-1 font-mono text-emerald-400';
+            setTimeout(() => {
+              closeAdminModal();
+              loadNotesData();
+            }, 1200);
+          } else {
+            const errData = await putRes.json();
+            throw new Error(errData.message || 'GitHub Sync Failed');
+          }
+
+        } catch (err) {
+          statusEl.textContent = 'Error: ' + err.message;
+          statusEl.className = 'text-xs text-center py-1 font-mono text-rose-400';
+        }
+      };
+
+      reader.readAsDataURL(file);
+    }
+
+    // Helper UI State Toggle
+    function showLoading(show, text = "") {
+      document.getElementById('loading-spinner').style.display = show ? 'flex' : 'none';
+      if (text) document.getElementById('loading-text').textContent = text;
+      document.getElementById('book-container').classList.toggle('hidden', show);
+      document.getElementById('empty-state').classList.add('hidden');
+      document.getElementById('reader-controls').classList.toggle('hidden', show);
+    }
+
+    function showEmptyState() {
+      document.getElementById('loading-spinner').style.display = 'none';
+      document.getElementById('book-container').classList.add('hidden');
+      document.getElementById('empty-state').classList.remove('hidden');
+      document.getElementById('reader-controls').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
