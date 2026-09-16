@@ -1,82 +1,260 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>NotesBook — Read</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Book Notes Reader & Admin</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PDF.js Engine -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- StPageFlip (Realistic Book Animation) -->
+  <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
+  <!-- Marked.js (Markdown Renderer) -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <style>
+    body {
+      background-color: #1a1917;
+      color: #e5e5e5;
+      font-family: serif;
+    }
+    .book-container {
+      perspective: 1500px;
+    }
+    .page {
+      background-color: #fdfbf7;
+      color: #2b2b2b;
+      box-shadow: inset 0 0 30px rgba(0,0,0,0.08);
+      overflow: hidden;
+    }
+    .page-content {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    canvas {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+  </style>
 </head>
-<body>
-<div id="app">
-  <header class="top">
-    <a href="#" class="logo" onclick="showHome();return false">📖 NotesBook</a>
-    <button class="adminBtn" onclick="showAdmin()">Admin</button>
+<body class="h-screen flex flex-col justify-between overflow-hidden select-none">
+
+  <!-- Top Navigation Bar -->
+  <header class="h-14 border-b border-stone-800 bg-stone-950 px-6 flex items-center justify-between z-10">
+    <div class="flex items-center space-x-3">
+      <span class="text-xl font-bold tracking-wide text-amber-500 font-sans">📖 Notes Reader</span>
+      <span id="file-title" class="text-xs bg-stone-800 text-stone-400 px-2 py-1 rounded font-mono">No document loaded</span>
+    </div>
+    
+    <div class="flex items-center space-x-4 font-sans text-sm">
+      <span id="page-indicator" class="text-stone-400">Page 0 / 0</span>
+      <button id="open-admin-btn" class="bg-amber-600 hover:bg-amber-500 text-stone-950 font-medium px-4 py-1.5 rounded transition">
+        ⚙️ Upload / Admin
+      </button>
+    </div>
   </header>
 
-  <section id="home" class="screen">
-    <div class="hero">
-      <div class="kicker">YOUR DIGITAL NOTEBOOK</div>
-      <h1>Read notes<br><i>like a real book.</i></h1>
-      <p>Upload a PDF or images in Admin and NotesBook automatically turns them into a page-by-page reading experience.</p>
-      <button class="openBtn" onclick="document.getElementById('library').scrollIntoView({behavior:'smooth'})">Open Library →</button>
+  <!-- Main Canvas / FlipBook Container -->
+  <main class="flex-1 flex items-center justify-center relative p-4">
+    <!-- Dropzone Placeholder when empty -->
+    <div id="drop-zone" class="border-2 border-dashed border-stone-700 rounded-2xl p-12 text-center max-w-md cursor-pointer hover:border-amber-500 transition bg-stone-900/40">
+      <div class="text-5xl mb-4">📚</div>
+      <h2 class="text-xl font-bold text-stone-200 mb-2 font-sans">Drop your PDF or MD File Here</h2>
+      <p class="text-sm text-stone-400 font-sans mb-4">Files process purely inside your browser — zero data leaves your machine.</p>
+      <label class="inline-block bg-amber-600 hover:bg-amber-500 text-stone-950 font-medium px-4 py-2 rounded cursor-pointer font-sans transition">
+        Select Local File
+        <input type="file" id="file-input" accept=".pdf,.md" class="hidden">
+      </label>
     </div>
-    <div class="library" id="library">
-      <div class="sectionTitle"><div><small>LIBRARY</small><h2>Your Notes</h2></div><span id="noteCount"></span></div>
-      <div id="notesGrid" class="notesGrid"></div>
+
+    <!-- The Animated Flipbook -->
+    <div class="book-container hidden" id="book-wrapper">
+      <div id="flipbook"></div>
     </div>
-  </section>
+  </main>
 
-  <section id="admin" class="screen hidden">
-    <div class="adminWrap">
-      <button class="back" onclick="showHome()">← Library</button>
-      <div class="kicker">PRIVATE ADMIN AREA</div>
-      <h2>Upload notes</h2>
-      <p class="muted">Choose a PDF or multiple images. The website automatically creates the book pages.</p>
+  <!-- Bottom Page Controls -->
+  <footer id="controls" class="h-14 border-t border-stone-800 bg-stone-950 px-6 flex items-center justify-center space-x-6 z-10 hidden font-sans">
+    <button id="prev-btn" class="bg-stone-800 hover:bg-stone-700 text-stone-200 px-4 py-1.5 rounded transition">
+      ◀ Previous
+    </button>
+    <button id="next-btn" class="bg-stone-800 hover:bg-stone-700 text-stone-200 px-4 py-1.5 rounded transition">
+      Next ▶
+    </button>
+  </footer>
 
-      <div class="uploadBox">
-        <label>Book / Chapter title<input id="bookTitle" placeholder="e.g. Kinematics Notes"></label>
-        <label>Subject<input id="bookSubject" placeholder="e.g. Physics"></label>
-        <label>Description<input id="bookDesc" placeholder="Optional short description"></label>
-        <label class="fileLabel">Choose PDF or images
-          <input id="fileInput" type="file" accept=".pdf,image/*" multiple>
-        </label>
-        <div id="fileInfo" class="fileInfo">No file selected</div>
-        <button id="uploadBtn" class="openBtn" onclick="createBook()">Create Book →</button>
-        <div id="status" class="status"></div>
+  <!-- Admin Panel Drawer -->
+  <div id="admin-panel" class="fixed inset-y-0 right-0 w-96 bg-stone-900 border-l border-stone-800 transform translate-x-full transition-transform duration-300 z-50 p-6 flex flex-col font-sans">
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-lg font-bold text-amber-500">Admin Upload Panel</h2>
+      <button id="close-admin-btn" class="text-stone-400 hover:text-white text-xl">✕</button>
+    </div>
+    
+    <div class="space-y-4 flex-1 overflow-y-auto">
+      <div class="bg-stone-800 p-4 rounded-lg">
+        <h3 class="text-sm font-semibold text-stone-200 mb-2">Upload New Note File</h3>
+        <input type="file" id="admin-file-input" accept=".pdf,.md" class="block w-full text-xs text-stone-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-amber-600 file:text-stone-950 hover:file:bg-amber-500">
       </div>
 
-      <div class="adminList">
-        <div class="sectionTitle"><div><small>MANAGE</small><h3>Uploaded books</h3></div></div>
-        <div id="adminBooks"></div>
+      <div class="bg-stone-800 p-4 rounded-lg">
+        <h3 class="text-sm font-semibold text-stone-200 mb-2">Host Permanent Notes</h3>
+        <p class="text-xs text-stone-400 leading-relaxed mb-3">
+          To display notes by default without uploading every time:
+        </p>
+        <ol class="text-xs text-stone-400 list-decimal list-inside space-y-1 font-mono">
+          <li>Drop your file into your GitHub repo root directory.</li>
+          <li>Rename it to <code class="text-amber-400">notes.pdf</code> or <code class="text-amber-400">notes.md</code>.</li>
+          <li>Push changes to deploy automatically!</li>
+        </ol>
       </div>
     </div>
-  </section>
+  </div>
 
-  <section id="reader" class="screen hidden">
-    <div class="readerTop">
-      <button class="back" onclick="closeReader()">← Library</button>
-      <div class="readerName"><small id="readerSubject"></small><strong id="readerTitle"></strong></div>
-      <button class="soundBtn" id="soundBtn" onclick="toggleSound()">🔊</button>
-    </div>
+  <script>
+    // Configure PDF.js worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-    <div class="bookArea">
-      <div class="book" id="book">
-        <div class="page backPage"></div>
-        <div class="page currentPage" id="currentPage"></div>
-        <div class="page nextPage" id="nextPage"></div>
-      </div>
-    </div>
+    let pageFlip = null;
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const adminFileInput = document.getElementById('admin-file-input');
+    const bookWrapper = document.getElementById('book-wrapper');
+    const flipbookEl = document.getElementById('flipbook');
+    const controls = document.getElementById('controls');
+    const pageIndicator = document.getElementById('page-indicator');
+    const fileTitle = document.getElementById('file-title');
 
-    <div class="readerControls">
-      <button id="prevBtn" onclick="turn(-1)">‹</button>
-      <div class="pageInfo"><span id="pageText">1 / 1</span><div class="progress"><i id="progress"></i></div></div>
-      <button id="nextBtn" onclick="turn(1)">›</button>
-    </div>
-    <div class="hint">Tap the page or use the arrows · Swipe left/right on mobile</div>
-  </section>
-</div>
+    // Drag and Drop listeners
+    dropZone.addEventListener('dragover', (e) => e.preventDefault());
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', (e) => e.target.files.length && handleFile(e.target.files[0]));
+    adminFileInput.addEventListener('change', (e) => e.target.files.length && handleFile(e.target.files[0]));
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs" type="module"></script>
-<script src="app.js" type="module"></script>
+    // Auto-load repo notes.pdf or notes.md if present on page launch
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        let response = await fetch('notes.pdf');
+        if (response.ok) {
+          const blob = await response.blob();
+          handleFile(new File([blob], "notes.pdf"));
+          return;
+        }
+        response = await fetch('notes.md');
+        if (response.ok) {
+          const text = await response.text();
+          renderMarkdownAsBook(text, "notes.md");
+        }
+      } catch (err) {
+        // Fallback to manual file upload if default notes aren't hosted yet
+      }
+    });
+
+    async function handleFile(file) {
+      fileTitle.textContent = file.name;
+      dropZone.classList.add('hidden');
+      bookWrapper.classList.remove('hidden');
+      controls.classList.remove('hidden');
+
+      if (file.name.endsWith('.pdf')) {
+        const buffer = await file.arrayBuffer();
+        renderPdfAsBook(buffer);
+      } else if (file.name.endsWith('.md')) {
+        const text = await file.text();
+        renderMarkdownAsBook(text, file.name);
+      }
+    }
+
+    // Render PDF pages into realistic PageFlip elements
+    async function renderPdfAsBook(arrayBuffer) {
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      flipbookEl.innerHTML = '';
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 1.5 });
+        
+        const pageDiv = document.createElement('div');
+        pageDiv.className = 'page';
+        
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        await page.render({ canvasContext: context, viewport: viewport }).promise;
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'page-content';
+        contentDiv.appendChild(canvas);
+        pageDiv.appendChild(contentDiv);
+        flipbookEl.appendChild(pageDiv);
+      }
+
+      initPageFlip(500, 700);
+    }
+
+    // Convert Markdown into paginated text pages
+    function renderMarkdownAsBook(mdText, filename) {
+      flipbookEl.innerHTML = '';
+      const htmlContent = marked.parse(mdText);
+      
+      // Basic paragraph splitter to turn long markdown text into distinct pages
+      const blocks = htmlContent.split(/(?=<h[1-3])/g);
+      
+      blocks.forEach((blockHtml) => {
+        const pageDiv = document.createElement('div');
+        pageDiv.className = 'page p-8 font-serif leading-relaxed text-stone-800 text-sm overflow-hidden';
+        pageDiv.innerHTML = `<div class="prose max-w-none">${blockHtml}</div>`;
+        flipbookEl.appendChild(pageDiv);
+      });
+
+      initPageFlip(450, 600);
+    }
+
+    // Initialize PageFlip instance
+    function initPageFlip(width, height) {
+      if (pageFlip) pageFlip.destroy();
+
+      pageFlip = new St.PageFlip(flipbookEl, {
+        width: width,
+        height: height,
+        size: "fixed",
+        minWidth: 300,
+        maxWidth: 1000,
+        minHeight: 400,
+        maxHeight: 1400,
+        maxShadowOpacity: 0.5,
+        showCover: true,
+        mobileScrollSupport: false
+      });
+
+      pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+
+      pageFlip.on('flip', (e) => {
+        pageIndicator.textContent = `Page ${e.data + 1} /${pageFlip.getPageCount()}`;
+      });
+
+      pageIndicator.textContent = `Page 1 / ${pageFlip.getPageCount()}`;
+    }
+
+    // Controls
+    document.getElementById('prev-btn').addEventListener('click', () => pageFlip?.flipPrev());
+    document.getElementById('next-btn').addEventListener('click', () => pageFlip?.flipNext());
+
+    // Drawer toggles
+    const adminPanel = document.getElementById('admin-panel');
+    document.getElementById('open-admin-btn').addEventListener('click', () => adminPanel.classList.remove('translate-x-full'));
+    document.getElementById('close-admin-btn').addEventListener('click', () => adminPanel.classList.add('translate-x-full'));
+  </script>
 </body>
 </html>
