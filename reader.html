@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#070a12">
+  <title>Reading — NotesBook</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="reader-page">
+  <header class="readerbar">
+    <a class="back" href="./">← Library</a>
+    <div class="reader-title"><strong id="bookTitle">Notes</strong><span id="bookMeta"></span></div>
+    <div class="reader-actions">
+      <button id="soundBtn" class="iconbtn" title="Toggle page sound">🔊</button>
+      <button id="fullBtn" class="iconbtn" title="Fullscreen">⛶</button>
+    </div>
+  </header>
+
+  <main class="reader">
+    <div id="stage" class="book-stage">
+      <button id="prev" class="turn-btn left" aria-label="Previous page">‹</button>
+      <div id="book" class="book" tabindex="0">
+        <div class="book-shadow"></div>
+        <div class="page-stack"></div>
+        <div class="page page-back"></div>
+        <div class="page page-front"><img id="pageImg" alt="Note page"></div>
+        <div class="paper-glow"></div>
+      </div>
+      <button id="next" class="turn-btn right" aria-label="Next page">›</button>
+    </div>
+    <div class="reader-bottom">
+      <div class="progress"><i id="progress"></i></div>
+      <div class="page-info"><button id="prev2">Previous</button><span id="pageNo">1 / 1</span><button id="next2">Next</button></div>
+      <div class="hint">Swipe or use ← → · <button id="soundText">Sound on</button></div>
+    </div>
+  </main>
+  <script src="reader.js"></script>
+</body>
+</html>

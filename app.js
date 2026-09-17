@@ -1,0 +1,8 @@
+const DATA="data/notes.json";let notes=[],subject="all";
+const $=s=>document.querySelector(s);
+async function load(){try{const r=await fetch(DATA+"?v="+Date.now());notes=await r.json()}catch(e){notes=[]}render()}
+function render(){const q=$("#search").value.trim().toLowerCase();const list=notes.filter(n=>(subject==="all"||n.subject===subject)&&(!q||`${n.title} ${n.description||""} ${n.subject} ${n.className||""}`.toLowerCase().includes(q)));$("#count").textContent=list.length+" note"+(list.length===1?"":"s");$("#heading").textContent=subject==="all"?"All notes":subject[0].toUpperCase()+subject.slice(1);$("#notes").innerHTML=list.map(n=>`<a class="note-card" href="reader.html?id=${encodeURIComponent(n.id)}"><div><div class="note-sub">${icon(n.subject)} ${esc(n.subject)} · ${esc(n.className||"")}</div><h3>${esc(n.title)}</h3><p>${esc(n.description||"Read your notes in book mode.")}</p></div><div class="read"><span>OPEN READER</span><span>→</span></div></a>`).join("");$("#empty").hidden=list.length!==0}
+function icon(s){return s==="physics"?"⚡":s==="chemistry"?"◈":"∑"}function esc(x){return String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+document.querySelectorAll(".subject").forEach(b=>b.onclick=()=>{document.querySelectorAll(".subject").forEach(x=>x.classList.remove("active"));b.classList.add("active");subject=b.dataset.subject;render()});
+$("#search").oninput=render;document.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();$("#search").focus()}});
+load();
