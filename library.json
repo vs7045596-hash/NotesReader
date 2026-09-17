@@ -1,5 +1,18 @@
 [
   {
+    "id": "gh-book-1789667406329",
+    "title": "Waves",
+    "subject": "Physics",
+    "chapter": "Uploaded Document",
+    "date": "2026-09-17",
+    "tags": [
+      "PDF",
+      "Flipbook"
+    ],
+    "password": "",
+    "pdfUrl": "https://cdn.jsdelivr.net/gh/vs7045596-hash/NotesReader@main/pdfs/1789667397940_4c3344a0-4bab-47e7-ae29-4deb5d50b00a.pdf"
+  },
+  {
     "id": "gh-book-1789667243899",
     "title": "SHM",
     "subject": "Physics",
