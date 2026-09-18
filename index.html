@@ -1735,42 +1735,58 @@
         });
     </script>
 
-    <!-- Inside index.html, right before </body> -->
-<script>
-    let currentZoom = 100;
-    const ZOOM_STEP = 10;
-    const MIN_ZOOM = 100;
-    const MAX_ZOOM = 200;
+    /**
+ * double-tap-zoom.js
+ * Enables double-tap and double-click to toggle zoom on flipbook pages.
+ */
 
-    function updateZoom(newZoom) {
-        currentZoom = Math.min(Math.max(newZoom, MIN_ZOOM), MAX_ZOOM);
-        
-        // 1. Update text display
-        const zoomLabel = document.getElementById('zoomPercentage');
-        if (zoomLabel) zoomLabel.innerText = `${currentZoom}%`;
+document.addEventListener('DOMContentLoaded', () => {
+    // Select your flipbook container or pages
+    const flipbookArea = document.querySelector('.page-flip-container') || document.getElementById('flipbook');
 
-        // 2. Scale the flipbook container
-        const flipbookContainer = document.querySelector('.page-flip-container') || document.getElementById('flipbook');
-        if (flipbookContainer) {
-            flipbookContainer.style.transform = `scale(${currentZoom / 100})`;
-            flipbookContainer.style.transformOrigin = 'center top';
-            flipbookContainer.style.transition = 'transform 0.2s ease-in-out';
+    if (!flipbookArea) return;
+
+    let lastTap = 0;
+
+    // 1. Handle Mobile Double-Tap
+    flipbookArea.addEventListener('touchend', (e) => {
+        const currentTime = new Date().getTime();
+        const tapLength = currentTime - lastTap;
+
+        if (tapLength < 300 && tapLength > 0) {
+            e.preventDefault(); // Prevent default double-tap zoom behavior of the browser
+            toggleDoubleTapZoom();
         }
+        lastTap = currentTime;
+    });
 
-        // 3. Disable page-turn gesture when zoomed in
-        if (typeof pageFlip !== 'undefined' && pageFlip) {
-            if (currentZoom > 100) {
-                if (pageFlip.disableUserTouch) pageFlip.disableUserTouch();
-            } else {
-                if (pageFlip.enableUserTouch) pageFlip.enableUserTouch();
-            }
-        }
+    // 2. Handle Desktop Double-Click
+    flipbookArea.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        toggleDoubleTapZoom();
+    });
+});
+
+// Toggle Zoom between 100% and 150% (or current zoomed state)
+function toggleDoubleTapZoom() {
+    if (typeof currentZoom === 'undefined') {
+        window.currentZoom = 100;
     }
 
-    function zoomIn() { updateZoom(currentZoom + ZOOM_STEP); }
-    function zoomOut() { updateZoom(currentZoom - ZOOM_STEP); }
-    function resetZoom() { updateZoom(100); }
-</script>
+    if (currentZoom > 100) {
+        // If already zoomed in, reset back to 100%
+        if (typeof resetZoom === 'function') {
+            resetZoom();
+        } else {
+            updateZoom(100);
+        }
+    } else {
+        // If normal size, zoom in to 150%
+        if (typeof updateZoom === 'function') {
+            updateZoom(150);
+        }
+    }
+}
     
 </body>
 </html>
