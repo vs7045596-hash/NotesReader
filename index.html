@@ -290,12 +290,24 @@
                     <i class="fa-solid fa-book-open text-indigo-400"></i>
                 </button>
 
-                <!-- Zoom Controls -->
-                <div class="hidden sm:flex items-center bg-slate-800 rounded-xl border border-slate-700/60 p-0.5">
-                    <button onclick="changeZoom(-0.15)" class="px-2 py-1 text-slate-300 hover:text-white text-xs font-bold" title="Zoom Out"><i class="fa-solid fa-minus text-[10px]"></i></button>
-                    <span id="zoomPercentDisplay" class="text-[10px] font-mono text-slate-400 px-1.5">100%</span>
-                    <button onclick="changeZoom(0.15)" class="px-2 py-1 text-slate-300 hover:text-white text-xs font-bold" title="Zoom In"><i class="fa-solid fa-plus text-[10px]"></i></button>
-                    <button onclick="resetZoom()" class="px-1.5 py-1 text-slate-400 hover:text-white text-[10px]" title="Reset Zoom"><i class="fa-solid fa-rotate-left"></i></button>
+                <div class="toolbar-zoom-controls">
+    <!-- Zoom Out Button -->
+    <button id="zoomOutBtn" onclick="zoomOut()">
+        <i class="fa-solid fa-minus"></i>
+    </button>
+
+    <!-- Zoom Text -->
+    <span id="zoomPercentage">100%</span>
+
+    <!-- Zoom In Button -->
+    <button id="zoomInBtn" onclick="zoomIn()">
+        <i class="fa-solid fa-plus"></i>
+    </button>
+
+    <!-- Reset Zoom Button -->
+    <button id="zoomResetBtn" onclick="resetZoom()">
+        <i class="fa-solid fa-rotate-left"></i>
+    </button>
                 </div>
 
                 <!-- Theme Customizer -->
