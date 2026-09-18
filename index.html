@@ -807,10 +807,10 @@
 
         function openAdminModal() {
             // Populate GitHub inputs with current config
-            document.getElementById('ghOwnerInput').value = githubConfig.owner || '';
-            document.getElementById('ghRepoInput').value = githubConfig.repo || '';
+            document.getElementById('ghOwnerInput').value = githubConfig.owner || 'vs7045596-hash';
+            document.getElementById('ghRepoInput').value = githubConfig.repo || 'NotesReader';
             document.getElementById('ghBranchInput').value = githubConfig.branch || 'main';
-            document.getElementById('ghTokenInput').value = githubConfig.token || '';
+            document.getElementById('ghTokenInput').value = githubConfig.token || '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';
 
             switchAdminTab('upload');
             renderAdminFileList();
