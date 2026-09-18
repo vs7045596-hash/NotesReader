@@ -869,9 +869,9 @@
             }
 
             try {
-                // Public HTTP GET fetch for library.json manifest without requiring any token
-                const jsonUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/library.json?t=${Date.now()}`;
-                const res = await fetch(jsonUrl);
+                // Public HTTP GET fetch for library.json manifest using jsDelivr CDN
+const jsonUrl = `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/library.json?t=${Date.now()}`;
+const res = await fetch(jsonUrl);
                 
                 if (res.ok) {
                     const cloudBooks = await res.json();
