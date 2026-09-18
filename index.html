@@ -1734,6 +1734,65 @@
             syncFromGitHub();
         });
     </script>
-    
+  <!-- Other HTML content above -->
+
+    <script>
+    (function () {
+        let lastTapTime = 0;
+
+        document.addEventListener('touchend', handleTouchEnd, true);
+        document.addEventListener('dblclick', handleDoubleClick, true);
+
+        function handleTouchEnd(e) {
+            const flipbookContainer = document.querySelector('.page-flip-container') || 
+                                      document.getElementById('flipbook') || 
+                                      document.querySelector('.df-container') ||
+                                      document.querySelector('.stPageFlip');
+
+            if (flipbookContainer && flipbookContainer.contains(e.target)) {
+                const currentTime = new Date().getTime();
+                const tapLength = currentTime - lastTapTime;
+
+                if (tapLength < 300 && tapLength > 0) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleZoomState();
+                }
+                lastTapTime = currentTime;
+            }
+        }
+
+        function handleDoubleClick(e) {
+            const flipbookContainer = document.querySelector('.page-flip-container') || 
+                                      document.getElementById('flipbook') || 
+                                      document.querySelector('.df-container') ||
+                                      document.querySelector('.stPageFlip');
+
+            if (flipbookContainer && flipbookContainer.contains(e.target)) {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleZoomState();
+            }
+        }
+
+        function toggleZoomState() {
+            if (typeof currentZoom === 'undefined') {
+                window.currentZoom = 100;
+            }
+
+            if (currentZoom > 100) {
+                if (typeof resetZoom === 'function') {
+                    resetZoom();
+                } else if (typeof updateZoom === 'function') {
+                    updateZoom(100);
+                }
+            } else {
+                if (typeof updateZoom === 'function') {
+                    updateZoom(150);
+                }
+            }
+        }
+    })();
+    </script>  
 </body>
 </html>
