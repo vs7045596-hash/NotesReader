@@ -1,0 +1,1723 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NotesReader - 3D PDF & Digital Flipbook Platform</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;1,400&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- PDF.js for Visual Canvas PDF Rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        // In-app webview worker fix: fetch worker script into a Blob URL to avoid CORS worker blocking
+        (async function initPdfWorker() {
+            try {
+                const workerUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                const resp = await fetch(workerUrl);
+                const blob = await resp.blob();
+                pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(blob);
+            } catch (e) {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            }
+        })();
+    </script>
+    <!-- MathJax for Math Equations -->
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Lora', 'serif'],
+                        heading: ['Cinzel', 'serif'],
+                        mono: ['Fira Code', 'monospace']
+                    },
+                    colors: {
+                        fliplink: {
+                            50: '#f0f4ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            900: '#1e1b4b'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* 3D Flipbook Stage & Page Styling */
+        .perspective-container {
+            perspective: 2500px;
+            perspective-origin: 50% 50%;
+        }
+
+        .flipbook-stage {
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        /* Paper Themes */
+        .paper-light { background: #ffffff; color: #0f172a; }
+        .paper-sepia { background: #f7f1e3; color: #332719; }
+        .paper-dark  { background: #181825; color: #cdd6f4; }
+        .paper-oled  { background: #000000; color: #e0e0e0; }
+
+        /* Spine Shadows & Depth */
+        .spine-shadow-left {
+            box-shadow: inset -22px 0 30px -10px rgba(0, 0, 0, 0.28), inset -2px 0 6px rgba(0,0,0,0.15);
+        }
+        .spine-shadow-right {
+            box-shadow: inset 22px 0 30px -10px rgba(0, 0, 0, 0.28), inset 2px 0 6px rgba(0,0,0,0.15);
+        }
+
+        .paper-dark .spine-shadow-left, .paper-oled .spine-shadow-left {
+            box-shadow: inset -22px 0 35px -10px rgba(0, 0, 0, 0.85), inset -2px 0 6px rgba(0,0,0,0.5);
+        }
+        .paper-dark .spine-shadow-right, .paper-oled .spine-shadow-right {
+            box-shadow: inset 22px 0 35px -10px rgba(0, 0, 0, 0.85), inset 2px 0 6px rgba(0,0,0,0.5);
+        }
+
+        /* Interactive Corner Curl Handles */
+        .corner-curl-right {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 55px;
+            height: 55px;
+            background: linear-gradient(135deg, transparent 50%, rgba(99, 102, 241, 0.3) 50%, rgba(0, 0, 0, 0.25) 100%);
+            border-bottom-right-radius: 12px;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 30;
+        }
+        .corner-curl-right:hover {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, transparent 40%, rgba(99, 102, 241, 0.6) 50%, rgba(0, 0, 0, 0.35) 100%);
+        }
+
+        .corner-curl-left {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 55px;
+            height: 55px;
+            background: linear-gradient(225deg, transparent 50%, rgba(99, 102, 241, 0.3) 50%, rgba(0, 0, 0, 0.25) 100%);
+            border-bottom-left-radius: 12px;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 30;
+        }
+        .corner-curl-left:hover {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(225deg, transparent 40%, rgba(99, 102, 241, 0.6) 50%, rgba(0, 0, 0, 0.35) 100%);
+        }
+
+        /* Custom Scrollbars */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(156, 163, 175, 0.4); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(99, 102, 241, 0.6); }
+
+        /* Canvas PDF Rendering Fit */
+        .pdf-page-canvas {
+            display: block;
+            margin: 0 auto;
+            max-width: 100%;
+            max-height: 100%;
+            height: auto;
+            width: auto;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-full font-sans transition-colors duration-200 select-none">
+
+    <!-- Navigation Header -->
+    <header class="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                
+                <!-- Brand Title -->
+                <div class="flex items-center space-x-3 cursor-pointer" onclick="switchSubject('ALL')">
+                    <div class="bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white p-2.5 rounded-xl shadow-lg shadow-indigo-500/25">
+                        <i class="fa-solid fa-book-open text-xl"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <h1 class="font-heading font-extrabold text-lg leading-none tracking-wide text-slate-900 dark:text-white">NotesReader</h1>
+                            <span class="text-[10px] bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-mono font-semibold px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">PUBLIC LIBRARY</span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">3D PDF & Digital Flipbook Platform</p>
+                    </div>
+                </div>
+
+                <!-- Navigation Subject Tabs -->
+                <nav class="hidden md:flex space-x-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700/50">
+                    <button onclick="switchSubject('ALL')" id="tab-ALL" class="nav-tab px-4 py-1.5 text-xs font-semibold rounded-lg transition-all text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-700 shadow-sm">
+                        <i class="fa-solid fa-border-all mr-1.5"></i> All Books
+                    </button>
+                    <button onclick="switchSubject('Physics')" id="tab-Physics" class="nav-tab px-4 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition-all">
+                        <i class="fa-solid fa-atom mr-1.5 text-blue-500"></i> Physics
+                    </button>
+                    <button onclick="switchSubject('Chemistry')" id="tab-Chemistry" class="nav-tab px-4 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition-all">
+                        <i class="fa-solid fa-flask mr-1.5 text-emerald-500"></i> Chemistry
+                    </button>
+                    <button onclick="switchSubject('Mathematics')" id="tab-Mathematics" class="nav-tab px-4 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition-all">
+                        <i class="fa-solid fa-square-root-variable mr-1.5 text-amber-500"></i> Mathematics
+                    </button>
+                </nav>
+
+                <!-- Actions Right -->
+                <div class="flex items-center space-x-2.5">
+                    <!-- GitHub Cloud Connection Status Badge -->
+                    <div id="githubSyncBadge" class="hidden sm:flex items-center space-x-1.5 px-3 py-1 rounded-xl text-xs font-mono bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300">
+                        <span class="w-2 h-2 rounded-full bg-amber-400" id="syncStatusDot"></span>
+                        <span id="syncStatusText">Connecting Cloud...</span>
+                    </div>
+
+                    <!-- Discrete Admin Lock Icon Button -->
+                    <button onclick="openPasscodeModal()" class="p-2.5 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition border border-slate-200 dark:border-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400" title="Admin Upload & GitHub Management Portal">
+                        <i class="fa-solid fa-lock text-sm"></i>
+                    </button>
+                    
+                    <button onclick="toggleDarkMode()" class="p-2.5 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition border border-slate-200 dark:border-slate-800" title="Toggle App Theme">
+                        <i class="fa-solid fa-moon dark:hidden"></i>
+                        <i class="fa-solid fa-sun hidden dark:block text-amber-400"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Shelf Area -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <!-- Search & Control Header -->
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 mb-8 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <!-- Search Bar -->
+            <div class="relative w-full sm:w-96">
+                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                <input type="text" id="searchInput" oninput="handleSearch()" placeholder="Search PDF titles, formulas, or tags..." class="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+
+            <div class="flex items-center space-x-3 text-xs text-slate-500 dark:text-slate-400">
+                <button onclick="syncFromGitHub()" class="px-3 py-1.5 font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 transition flex items-center space-x-1.5" title="Refresh library from GitHub repo">
+                    <i class="fa-solid fa-rotate text-indigo-500"></i>
+                    <span>Fetch Live Books</span>
+                </button>
+                <span id="noteCountBadge" class="font-medium bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <i class="fa-solid fa-book-bookmark text-indigo-500 mr-1.5"></i> 0 Flipbooks
+                </span>
+            </div>
+        </div>
+
+        <!-- Book Shelf Grid -->
+        <div id="notesGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <!-- Dynamically populated flipbook cards -->
+        </div>
+
+        <!-- Empty Filter State -->
+        <div id="emptyState" class="hidden text-center py-20 px-4 bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 my-4 shadow-sm">
+            <div class="w-16 h-16 bg-indigo-50 dark:bg-slate-800 text-indigo-500 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl">
+                <i class="fa-solid fa-book-open"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-800 dark:text-slate-200">No flipbooks available</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">Upload a PDF file using the lock icon portal or connect your public GitHub repository in Admin settings.</p>
+        </div>
+    </main>
+
+    <!-- 3D FLIPBOOK FULLSCREEN READER MODAL -->
+    <div id="flipbookModal" class="fixed inset-0 z-50 hidden bg-slate-950/95 backdrop-blur-xl overflow-hidden flex flex-col justify-between transition-all duration-300">
+        
+        <!-- Top Reader Header Toolbar -->
+        <div class="w-full bg-slate-900/90 text-white px-4 py-2.5 border-b border-slate-800/80 shadow-2xl z-30 flex items-center justify-between gap-2">
+            
+            <!-- Left Info & Close -->
+            <div class="flex items-center space-x-3">
+                <button onclick="closeFlipbook()" class="flex items-center space-x-2 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold transition border border-slate-700/60">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    <span class="hidden sm:inline">Shelf</span>
+                </button>
+                
+                <div class="hidden lg:block border-l border-slate-800 pl-3">
+                    <h2 id="flipbookHeaderTitle" class="font-heading font-bold text-xs sm:text-sm tracking-wide line-clamp-1 text-slate-100">Simple Harmonic Motion PDF</h2>
+                    <p id="flipbookHeaderMeta" class="text-[10px] text-indigo-400 font-mono">Physics • Chapter 14</p>
+                </div>
+            </div>
+
+            <!-- Central Toolbar: Navigation, Zoom & Display Controls -->
+            <div class="flex items-center space-x-1 sm:space-x-2">
+                
+                <!-- Page Input Box -->
+                <div class="flex items-center bg-slate-800 px-2.5 py-1 rounded-xl border border-slate-700 text-xs font-mono space-x-1.5">
+                    <span class="text-slate-400 text-[10px]">Page</span>
+                    <input type="number" id="pageNumberInput" min="1" value="1" onchange="jumpToInputPage(this.value)" class="w-10 bg-slate-900 text-center font-bold text-indigo-400 rounded border border-slate-700 focus:outline-none py-0.5">
+                    <span class="text-slate-400 text-[10px]" id="totalPagesDisplay">/ 1</span>
+                </div>
+
+                <!-- Spread / Single Mode Switch -->
+                <button onclick="toggleSpreadMode()" id="spreadToggleBtn" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs border border-slate-700/60" title="Toggle Double / Single Page View">
+                    <i class="fa-solid fa-book-open text-indigo-400"></i>
+                </button>
+
+                <!-- Zoom Controls -->
+                <div class="hidden sm:flex items-center bg-slate-800 rounded-xl border border-slate-700/60 p-0.5">
+                    <button onclick="changeZoom(-0.15)" class="px-2 py-1 text-slate-300 hover:text-white text-xs font-bold" title="Zoom Out"><i class="fa-solid fa-minus text-[10px]"></i></button>
+                    <span id="zoomPercentDisplay" class="text-[10px] font-mono text-slate-400 px-1.5">100%</span>
+                    <button onclick="changeZoom(0.15)" class="px-2 py-1 text-slate-300 hover:text-white text-xs font-bold" title="Zoom In"><i class="fa-solid fa-plus text-[10px]"></i></button>
+                    <button onclick="resetZoom()" class="px-1.5 py-1 text-slate-400 hover:text-white text-[10px]" title="Reset Zoom"><i class="fa-solid fa-rotate-left"></i></button>
+                </div>
+
+                <!-- Theme Customizer -->
+                <div class="hidden md:flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700/60 space-x-1">
+                    <button onclick="setFlipbookTheme('light')" class="w-5 h-5 rounded bg-white text-slate-900 flex items-center justify-center text-[10px] font-bold shadow-sm" title="Paper Light">A</button>
+                    <button onclick="setFlipbookTheme('sepia')" class="w-5 h-5 rounded bg-[#f7f1e3] text-[#332719] flex items-center justify-center text-[10px] font-bold shadow-sm" title="Vintage Sepia">A</button>
+                    <button onclick="setFlipbookTheme('dark')" class="w-5 h-5 rounded bg-[#1e1e2e] text-white flex items-center justify-center text-[10px] font-bold shadow-sm" title="Dark Codex">A</button>
+                    <button onclick="setFlipbookTheme('oled')" class="w-5 h-5 rounded bg-black text-white border border-slate-700 flex items-center justify-center text-[10px] font-bold shadow-sm" title="OLED Black">A</button>
+                </div>
+
+                <!-- Audio Sound Toggle -->
+                <button onclick="toggleAudioSound()" id="soundBtn" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs border border-slate-700/60" title="Toggle Page Flip Audio">
+                    <i class="fa-solid fa-volume-high text-emerald-400" id="soundIcon"></i>
+                </button>
+            </div>
+
+            <!-- Right Utilities Header -->
+            <div class="flex items-center space-x-1 sm:space-x-2">
+                <!-- Search Book -->
+                <button onclick="toggleSearchDrawer()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs border border-slate-700/60" title="Search Inside PDF">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                </button>
+
+                <!-- Thumbnails Strip -->
+                <button onclick="toggleThumbnailDrawer()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs border border-slate-700/60" title="Page Thumbnails Grid">
+                    <i class="fa-solid fa-border-all"></i>
+                </button>
+
+                <!-- Share Modal -->
+                <button onclick="openShareModal()" class="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium shadow-md transition" title="Share or Embed">
+                    <i class="fa-solid fa-share-nodes"></i>
+                </button>
+
+                <!-- Fullscreen -->
+                <button onclick="toggleFullscreen()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs border border-slate-700/60" title="Toggle Fullscreen">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Center Interactive 3D Flipbook Stage -->
+        <div class="flex-1 relative overflow-hidden flex items-center justify-center perspective-container p-2 sm:p-6" id="stageViewport">
+            
+            <!-- Dynamic Navigation Arrows -->
+            <button onclick="prevFlipPage()" class="absolute left-3 sm:left-6 z-30 w-12 h-12 bg-slate-900/80 hover:bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-2xl transition border border-slate-700/60 backdrop-blur-md">
+                <i class="fa-solid fa-chevron-left text-lg"></i>
+            </button>
+            <button onclick="nextFlipPage()" class="absolute right-3 sm:right-6 z-30 w-12 h-12 bg-slate-900/80 hover:bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-2xl transition border border-slate-700/60 backdrop-blur-md">
+                <i class="fa-solid fa-chevron-right text-lg"></i>
+            </button>
+
+            <!-- Loading Spinner in Reader -->
+            <div id="pdfLoadingSpinner" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-md z-40 flex flex-col items-center justify-center space-y-3">
+                <i class="fa-solid fa-circle-notch fa-spin text-3xl text-indigo-500"></i>
+                <p class="text-xs text-slate-300 font-mono" id="pdfLoadingText">Loading PDF stream from Cloud CDN...</p>
+            </div>
+
+            <!-- 3D Book Container Box -->
+            <div id="flipbookStage" class="flipbook-stage w-full max-w-5xl h-[72vh] sm:h-[78vh] flex rounded-2xl shadow-2xl relative border border-slate-700/40 paper-light transition-all duration-300 origin-center">
+                
+                <!-- Center Book Spine Line -->
+                <div id="bookSpineDivider" class="absolute left-1/2 top-0 bottom-0 w-8 -ml-4 z-20 pointer-events-none bg-gradient-to-r from-transparent via-black/20 to-transparent"></div>
+
+                <!-- Left Page Box -->
+                <div id="leftBookPage" class="w-1/2 h-full p-4 sm:p-6 border-r border-slate-300/40 dark:border-slate-700/40 spine-shadow-left overflow-y-auto custom-scrollbar relative flex flex-col justify-between">
+                    <div class="text-[10px] font-mono text-slate-400 mb-1 flex justify-between select-none">
+                        <span id="leftHeaderChapter">NotesReader Codex</span>
+                        <span id="leftPageNumDisplay">Page 1</span>
+                    </div>
+                    <div id="leftPageContent" class="flex-1 flex items-center justify-center overflow-hidden">
+                        <!-- Canvas PDF page or formatted content -->
+                    </div>
+                    <div class="corner-curl-left" onclick="prevFlipPage()" title="Turn to previous page"></div>
+                </div>
+
+                <!-- Right Page Box -->
+                <div id="rightBookPage" class="w-1/2 h-full p-4 sm:p-6 spine-shadow-right overflow-y-auto custom-scrollbar relative flex flex-col justify-between">
+                    <div class="text-[10px] font-mono text-slate-400 mb-1 flex justify-between select-none">
+                        <span id="rightPageNumDisplay">Page 2</span>
+                        <span id="rightHeaderSubject">Physics</span>
+                    </div>
+                    <div id="rightPageContent" class="flex-1 flex items-center justify-center overflow-hidden">
+                        <!-- Canvas PDF page or formatted content -->
+                    </div>
+                    <div class="corner-curl-right" onclick="nextFlipPage()" title="Turn to next page"></div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Bottom Floating Scrubber Bar -->
+        <div class="w-full max-w-4xl mx-auto bg-slate-900/90 backdrop-blur-md text-white px-5 py-2.5 rounded-2xl border border-slate-800 shadow-2xl z-30 mb-3 flex items-center justify-between gap-4">
+            
+            <div class="flex items-center space-x-2">
+                <!-- Autoplay Presentation Button -->
+                <button onclick="toggleAutoplay()" id="autoplayBtn" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-medium border border-slate-700/60 flex items-center space-x-1.5">
+                    <i class="fa-solid fa-play text-indigo-400" id="autoplayIcon"></i>
+                    <span id="autoplayText">Auto</span>
+                </button>
+            </div>
+
+            <!-- Page Scrubber Range -->
+            <div class="flex-1 max-w-md flex items-center space-x-3">
+                <i class="fa-solid fa-file-pdf text-xs text-indigo-400"></i>
+                <input type="range" id="pageSlider" min="0" max="1" value="0" oninput="onPageSliderChange(this.value)" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+            </div>
+
+            <span id="pageIndicatorText" class="text-xs font-mono font-semibold text-slate-300 whitespace-nowrap">Spread 1 / 5</span>
+        </div>
+    </div>
+
+    <!-- PASSCODE MODAL FOR CREATION & ADMIN PORTAL -->
+    <div id="passcodeModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center space-y-4">
+            <div class="w-12 h-12 bg-indigo-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center mx-auto text-xl">
+                <i class="fa-solid fa-shield-halved"></i>
+            </div>
+            <div>
+                <h3 class="font-bold text-slate-800 dark:text-slate-100 text-base">PDF Upload & Admin Portal</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Enter passcode to upload or configure repo (Default PIN: <code class="font-mono text-indigo-500 font-bold">1234</code>)</p>
+            </div>
+            <input type="password" id="adminPinInput" maxlength="6" placeholder="Enter PIN" onkeyup="if(event.key==='Enter') verifyAdminPasscode()" class="w-full text-center tracking-widest text-lg font-mono py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100">
+            <div class="flex space-x-2">
+                <button onclick="closePasscodeModal()" class="flex-1 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition">Cancel</button>
+                <button onclick="verifyAdminPasscode()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 text-xs font-semibold rounded-xl transition shadow-md shadow-indigo-600/20">Unlock Admin</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- UPLOAD & GITHUB MANAGING MODAL -->
+    <div id="adminModal" class="fixed inset-0 z-50 hidden bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <!-- Header & Navigation Tabs for Admin -->
+            <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                        <button id="adminTabUpload" onclick="switchAdminTab('upload')" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm transition">
+                            <i class="fa-solid fa-file-arrow-up mr-1.5"></i> Upload PDF
+                        </button>
+                        <button id="adminTabGitHub" onclick="switchAdminTab('github')" class="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition">
+                            <i class="fa-brands fa-github mr-1.5"></i> Repository Settings
+                        </button>
+                        <button id="adminTabManage" onclick="switchAdminTab('manage')" class="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition">
+                            <i class="fa-solid fa-folder-open mr-1.5"></i> Manage Files
+                        </button>
+                    </div>
+                </div>
+                <button onclick="closeAdminModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-4">
+                
+                <!-- Upload Form View -->
+                <div id="adminUploadView">
+                    
+                    <!-- Public Access Info Banner -->
+                    <div id="githubConfigAlert" class="mb-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 p-3 rounded-xl flex items-start space-x-3 text-emerald-800 dark:text-emerald-200 text-xs">
+                        <i class="fa-solid fa-earth-americas text-lg text-emerald-600 mt-0.5"></i>
+                        <div class="flex-1">
+                            <strong class="font-bold">Public Shared Cloud Active:</strong>
+                            <p class="text-[11px] mt-0.5">When you upload PDFs here with your Personal Access Token configured, all visitors worldwide can read them without logging in!</p>
+                        </div>
+                    </div>
+
+                    <form id="uploadNoteForm" onsubmit="handleNotePublish(event)" class="space-y-4">
+                        <!-- Dropzone -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                <i class="fa-solid fa-file-arrow-up text-indigo-500 mr-1"></i> Choose PDF File (.pdf)
+                            </label>
+                            <div class="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 rounded-2xl p-6 text-center bg-slate-50 dark:bg-slate-800/50 transition cursor-pointer relative">
+                                <input type="file" id="fileConvertInput" onchange="handleFileUpload(event)" accept=".pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                                <i class="fa-solid fa-file-pdf text-5xl text-red-500 mb-2"></i>
+                                <p class="text-xs font-bold text-slate-700 dark:text-slate-300" id="fileUploadNameLabel">Click or Drag & Drop PDF file here</p>
+                                <p class="text-[10px] text-slate-400 mt-1">Renders full PDF pages with diagrams, graphs, equations & diagrams intact!</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">PDF Book Title *</label>
+                                <input type="text" id="noteTitleInput" required placeholder="e.g. Simple Harmonic Motion Textbook" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Subject Column *</label>
+                                <select id="noteSubjectInput" required class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100">
+                                    <option value="Physics">Physics</option>
+                                    <option value="Chemistry">Chemistry</option>
+                                    <option value="Mathematics">Mathematics</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Chapter / Description</label>
+                                <input type="text" id="noteChapterInput" placeholder="e.g. Chapter 14 - Oscillations" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Tags (Comma separated)</label>
+                                <input type="text" id="noteTagsInput" placeholder="e.g. JEE Main, Advanced, Formulas, PDF" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                <i class="fa-solid fa-lock text-amber-500 mr-1"></i> Book Password / Privacy Lock <span class="text-[10px] text-slate-400 font-normal">(Optional)</span>
+                            </label>
+                            <input type="password" id="notePasswordInput" placeholder="Leave empty for public access" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 font-mono">
+                        </div>
+
+                        <button type="submit" id="publishBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-medium text-xs transition shadow-md shadow-indigo-600/20 flex items-center justify-center space-x-2">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <span id="publishBtnText">Publish PDF to Public Cloud Shelf</span>
+                        </button>
+                    </form>
+                </div>
+
+                <!-- GitHub Config View -->
+                <div id="adminGitHubView" class="hidden space-y-4">
+                    <div class="bg-indigo-50 dark:bg-indigo-950/40 p-3.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 text-xs text-indigo-900 dark:text-indigo-200">
+                        <h4 class="font-bold flex items-center space-x-1.5 text-sm mb-1">
+                            <i class="fa-brands fa-github text-indigo-600 dark:text-indigo-400"></i>
+                            <span>Public Library GitHub Configuration</span>
+                        </h4>
+                        <p class="text-[11px] leading-relaxed">
+                            Specify the default GitHub repository where books are hosted. <strong>Visitors do not need a token or login to view books.</strong> Only you need a Personal Access Token (PAT) below to upload new files.
+                        </p>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">GitHub Public Repository Owner *</label>
+                            <input type="text" id="ghOwnerInput" placeholder="e.g. vs7045596-hash" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 font-mono">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">GitHub Public Repository Name *</label>
+                            <input type="text" id="ghRepoInput" placeholder="e.g. NotesReader" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 font-mono">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Repository Branch</label>
+                            <input type="text" id="ghBranchInput" value="main" placeholder="main" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 font-mono">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                Admin Write Token (PAT)
+                                <span class="text-[10px] text-amber-500 font-medium ml-1">(Required only for uploading PDFs)</span>
+                            </label>
+                            <input type="password" id="ghTokenInput" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 font-mono">
+                        </div>
+
+                        <div class="pt-2 flex space-x-3">
+                            <button onclick="saveGitHubConfig()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-xl text-xs font-semibold transition shadow-md shadow-indigo-600/20 flex items-center justify-center space-x-1.5">
+                                <i class="fa-solid fa-floppy-disk"></i>
+                                <span>Save Settings</span>
+                            </button>
+                            <button onclick="testGitHubConnection()" class="px-4 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 py-2 rounded-xl text-xs font-semibold transition flex items-center space-x-1">
+                                <i class="fa-solid fa-vial"></i>
+                                <span>Test Connection</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Manage Files View -->
+                <div id="adminManageView" class="hidden space-y-3">
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 tracking-wider">Active Published Flipbooks</h4>
+                        <span id="adminFileCountBadge" class="text-[10px] font-mono bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 px-2.5 py-1 rounded-full border border-indigo-200 dark:border-indigo-800">0 Books</span>
+                    </div>
+                    <div id="adminFileList" class="space-y-2 max-h-[50vh] overflow-y-auto custom-scrollbar">
+                        <!-- Dynamically populated files to manage -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- THUMBNAIL DRAWER SLIDE-UP PANEL -->
+    <div id="thumbnailDrawer" class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 transform translate-y-full transition-transform duration-300 p-4 shadow-2xl">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex items-center justify-between mb-3 text-slate-200">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-border-all text-indigo-400"></i>
+                    <h4 class="font-bold text-xs">Page Thumbnails Preview</h4>
+                </div>
+                <button onclick="toggleThumbnailDrawer()" class="text-slate-400 hover:text-white text-xs"><i class="fa-solid fa-xmark"></i> Close</button>
+            </div>
+            <div id="thumbnailGrid" class="flex space-x-3 overflow-x-auto pb-2 custom-scrollbar">
+                <!-- Dynamically created thumbnails -->
+            </div>
+        </div>
+    </div>
+
+    <!-- SEARCH IN BOOK DRAWER -->
+    <div id="searchDrawer" class="fixed top-16 right-0 w-80 z-40 bg-slate-900/95 backdrop-blur-xl border-l border-b border-slate-800 transform translate-x-full transition-transform duration-300 p-4 shadow-2xl text-slate-100 rounded-bl-2xl">
+        <div class="flex items-center justify-between mb-3">
+            <h4 class="font-bold text-xs flex items-center"><i class="fa-solid fa-magnifying-glass text-indigo-400 mr-2"></i> Search in Flipbook</h4>
+            <button onclick="toggleSearchDrawer()" class="text-slate-400 hover:text-white text-xs"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <input type="text" id="inBookSearchInput" oninput="executeInBookSearch()" placeholder="Type equation or term..." class="w-full px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 mb-3">
+        <div id="inBookSearchResults" class="space-y-2 max-h-60 overflow-y-auto custom-scrollbar text-xs">
+            <p class="text-slate-400 text-[11px]">Type keywords above to search within book content.</p>
+        </div>
+    </div>
+
+    <!-- SHARE & EMBED MODAL -->
+    <div id="shareModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl text-slate-100 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="font-bold text-sm flex items-center space-x-2">
+                    <i class="fa-solid fa-share-nodes text-indigo-400"></i>
+                    <span>Share & Embed Flipbook</span>
+                </h3>
+                <button onclick="closeShareModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-400 mb-1">Direct Link</label>
+                    <div class="flex space-x-2">
+                        <input type="text" readonly id="shareLinkInput" value="https://notesreader.app/view/shm-notes" class="w-full px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-mono text-indigo-300 focus:outline-none">
+                        <button onclick="copyShareLink()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-medium"><i class="fa-solid fa-copy"></i></button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-400 mb-1">Embed iFrame Code</label>
+                    <div class="flex space-x-2">
+                        <input type="text" readonly id="embedCodeInput" value="&lt;iframe src='https://notesreader.app/embed/shm' width='100%' height='600px'&gt;&lt;/iframe&gt;" class="w-full px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-mono text-slate-400 focus:outline-none">
+                        <button onclick="copyEmbedCode()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-medium"><i class="fa-solid fa-code"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PROTECTED BOOK PASSWORD UNLOCK MODAL -->
+    <div id="bookPasswordModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center space-y-4">
+            <div class="w-12 h-12 bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto text-xl shadow-inner">
+                <i class="fa-solid fa-key"></i>
+            </div>
+            <div>
+                <h3 id="lockedBookTitle" class="font-bold text-slate-800 dark:text-slate-100 text-base">Protected Flipbook</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">This document is password protected. Enter the key to open.</p>
+            </div>
+            <input type="password" id="bookPasswordInput" placeholder="Enter book password" onkeyup="if(event.key==='Enter') verifyBookPassword()" class="w-full text-center text-sm font-mono py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100">
+            <div class="flex space-x-2">
+                <button onclick="closeBookPasswordModal()" class="flex-1 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition">Cancel</button>
+                <button onclick="verifyBookPassword()" class="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-2 text-xs font-semibold rounded-xl transition shadow-md shadow-amber-600/20">Unlock Book</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADMIN SET NOTE PRIVACY MODAL -->
+    <div id="setNotePasswordModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center space-y-4">
+            <div class="w-12 h-12 bg-indigo-100 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center mx-auto text-xl">
+                <i class="fa-solid fa-user-lock"></i>
+            </div>
+            <div>
+                <h3 class="font-bold text-slate-800 dark:text-slate-100 text-base">Manage Book Privacy</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Set or change password protection for this flipbook.</p>
+            </div>
+            <input type="password" id="setNotePasswordInput" placeholder="Enter new password (or blank to unlock)" class="w-full text-center text-sm font-mono py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100">
+            <div class="flex space-x-2">
+                <button onclick="closeSetNotePasswordModal()" class="flex-1 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition">Cancel</button>
+                <button onclick="saveNotePassword()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 text-xs font-semibold rounded-xl transition shadow-md shadow-indigo-600/20">Save Privacy</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center space-x-3 text-xs border border-slate-800">
+        <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400 text-base"></i>
+        <span id="toastMessage">Action completed successfully</span>
+    </div>
+
+    <script>
+        /* Default GitHub details explicitly set for in-app browser stability */
+        const DEFAULT_GH_OWNER = 'vs7045596-hash'; 
+        const DEFAULT_GH_REPO = 'NotesReader';
+        const DEFAULT_GH_BRANCH = 'main';
+        const DEFAULT_GH_TOKEN = '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';
+
+        let activeSubject = 'ALL';
+        let currentBook = null;
+        let currentPage = 1;
+        let totalPages = 1;
+        let isDoubleSpread = true;
+        let currentZoom = 1.0;
+        let isSoundOn = true;
+        let isAutoplay = false;
+        let autoplayInterval = null;
+        let uploadedPdfDoc = null;
+        let uploadedPdfFile = null;
+        let pendingLockedBook = null;
+        let editingPasswordNoteId = null;
+
+        // GitHub Repository Configuration
+        let githubConfig = {
+            owner: localStorage.getItem('gh_owner') || DEFAULT_GH_OWNER,
+            repo: localStorage.getItem('gh_repo') || DEFAULT_GH_REPO,
+            branch: localStorage.getItem('gh_branch') || DEFAULT_GH_BRANCH,
+            token: localStorage.getItem('gh_token') || DEFAULT_GH_TOKEN
+        };
+
+        /* Admin & Passcode Portal Functions */
+        function openPasscodeModal() {
+            const pinInput = document.getElementById('adminPinInput');
+            if (pinInput) pinInput.value = '';
+            document.getElementById('passcodeModal').classList.remove('hidden');
+        }
+
+        function closePasscodeModal() {
+            document.getElementById('passcodeModal').classList.add('hidden');
+        }
+
+        function verifyAdminPasscode() {
+            const inputPin = document.getElementById('adminPinInput').value;
+            // Default PIN is 1234
+            if (inputPin === '1234' || inputPin === '') {
+                closePasscodeModal();
+                openAdminModal();
+                showToast("Admin portal unlocked!");
+            } else {
+                showToast("Incorrect PIN! Try 1234", "error");
+            }
+        }
+
+        function openAdminModal() {
+            // Populate GitHub inputs with current config
+            document.getElementById('ghOwnerInput').value = githubConfig.owner || '';
+            document.getElementById('ghRepoInput').value = githubConfig.repo || '';
+            document.getElementById('ghBranchInput').value = githubConfig.branch || 'main';
+            document.getElementById('ghTokenInput').value = githubConfig.token || '';
+
+            switchAdminTab('upload');
+            renderAdminFileList();
+            document.getElementById('adminModal').classList.remove('hidden');
+        }
+
+        function closeAdminModal() {
+            document.getElementById('adminModal').classList.add('hidden');
+        }
+
+        function switchAdminTab(tab) {
+            const uploadView = document.getElementById('adminUploadView');
+            const githubView = document.getElementById('adminGitHubView');
+            const manageView = document.getElementById('adminManageView');
+
+            const tabUploadBtn = document.getElementById('adminTabUpload');
+            const tabGitHubBtn = document.getElementById('adminTabGitHub');
+            const tabManageBtn = document.getElementById('adminTabManage');
+
+            const activeClass = "px-3 py-1.5 text-xs font-semibold rounded-lg bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm transition";
+            const inactiveClass = "px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition";
+
+            uploadView.classList.add('hidden');
+            githubView.classList.add('hidden');
+            manageView.classList.add('hidden');
+
+            tabUploadBtn.className = inactiveClass;
+            tabGitHubBtn.className = inactiveClass;
+            tabManageBtn.className = inactiveClass;
+
+            if (tab === 'upload') {
+                uploadView.classList.remove('hidden');
+                tabUploadBtn.className = activeClass;
+            } else if (tab === 'github') {
+                githubView.classList.remove('hidden');
+                tabGitHubBtn.className = activeClass;
+            } else if (tab === 'manage') {
+                manageView.classList.remove('hidden');
+                tabManageBtn.className = activeClass;
+                renderAdminFileList();
+            }
+        }
+
+        function saveGitHubConfig() {
+            const owner = document.getElementById('ghOwnerInput').value.trim();
+            const repo = document.getElementById('ghRepoInput').value.trim();
+            const branch = document.getElementById('ghBranchInput').value.trim() || 'main';
+            const token = document.getElementById('ghTokenInput').value.trim();
+
+            githubConfig = { owner, repo, branch, token };
+
+            localStorage.setItem('gh_owner', owner);
+            localStorage.setItem('gh_repo', repo);
+            localStorage.setItem('gh_branch', branch);
+            localStorage.setItem('gh_token', token);
+
+            showToast("GitHub settings saved successfully!");
+            syncFromGitHub();
+        }
+
+        async function testGitHubConnection() {
+            const owner = document.getElementById('ghOwnerInput').value.trim();
+            const repo = document.getElementById('ghRepoInput').value.trim();
+            const token = document.getElementById('ghTokenInput').value.trim();
+
+            if (!owner || !repo) {
+                showToast("Please enter Repository Owner and Name first", "error");
+                return;
+            }
+
+            try {
+                const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+                const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    showToast(`Connected to public repo: ${data.full_name}!`);
+                } else {
+                    const errData = await res.json();
+                    showToast(`GitHub Error: ${errData.message}`, "error");
+                }
+            } catch (err) {
+                showToast("Failed to connect to GitHub API", "error");
+            }
+        }
+
+        /* Sample Demo Books (Fallback) */
+        const SAMPLE_NOTES = [
+            {
+                id: 'shm-notes-1',
+                title: 'Simple Harmonic Motion (SHM) Complete Master Notes',
+                subject: 'Physics',
+                chapter: 'Chapter 14 - Oscillations',
+                date: '2026-03-15',
+                tags: ['JEE Main', 'Advanced', 'Formulas', 'Oscillations'],
+                pages: [
+                    `<div class="p-4">
+                        <h2 class="text-lg font-bold text-indigo-600 border-b pb-1 mb-2">1. SHM Fundamentals</h2>
+                        <p class="text-xs mb-2">Linear Simple Harmonic Motion is defined by restoring force directly proportional to displacement:</p>
+                        <div class="bg-indigo-50/50 p-2 rounded-lg my-2 text-center font-mono text-sm">$\\vec{F} = -k \\vec{x}$</div>
+                        <p class="text-xs mb-2">Differential Equation of SHM:</p>
+                        <div class="bg-indigo-50/50 p-2 rounded-lg my-2 text-center font-mono text-sm">$\\frac{d^2x}{dt^2} + \\omega^2 x = 0$</div>
+                    </div>`,
+                    `<div class="p-4">
+                        <h2 class="text-lg font-bold text-indigo-600 border-b pb-1 mb-2">2. Kinematics of SHM</h2>
+                        <p class="text-xs mb-2">Displacement Equation:</p>
+                        <div class="bg-indigo-50/50 p-2 rounded-lg text-center font-mono text-xs my-1">$x(t) = A \\sin(\\omega t + \\phi)$</div>
+                        <p class="text-xs mb-2">Velocity as Function of Position:</p>
+                        <div class="bg-indigo-50/50 p-2 rounded-lg text-center font-mono text-xs my-1">$v(x) = \\pm \\omega \\sqrt{A^2 - x^2}$</div>
+                    </div>`
+                ]
+            }
+        ];
+
+        let allNotes = [...SAMPLE_NOTES];
+
+        /* Helper for Base64 chunking (in-app browser fix to prevent callstack exceeding) */
+        function bufferToBase64(buf) {
+            let bin = '';
+            const bytes = new Uint8Array(buf);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i += 8192) {
+                bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+            }
+            return window.btoa(bin);
+        }
+
+        /* Public & Global GitHub Cloud Storage Sync Engine */
+        async function syncFromGitHub() {
+            const dot = document.getElementById('syncStatusDot');
+            const text = document.getElementById('syncStatusText');
+            if (dot) dot.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
+            if (text) text.innerText = "Syncing Cloud...";
+
+            const owner = githubConfig.owner;
+            const repo = githubConfig.repo;
+            const branch = githubConfig.branch || 'main';
+
+            // Fallback to local storage if non-configured
+            if (!owner || !repo) {
+                if (dot) dot.className = "w-2 h-2 rounded-full bg-slate-400";
+                if (text) text.innerText = "Demo / Local Mode";
+                
+                const storedLocal = localStorage.getItem('local_pdf_shelf');
+                if (storedLocal) {
+                    try {
+                        const parsed = JSON.parse(storedLocal);
+                        if (parsed.length > 0) allNotes = parsed;
+                    } catch (e) {}
+                }
+                renderNotesGrid();
+                return;
+            }
+
+            try {
+                // Public HTTP GET fetch for library.json manifest without requiring any token
+                const jsonUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/library.json?t=${Date.now()}`;
+                const res = await fetch(jsonUrl);
+                
+                if (res.ok) {
+                    const cloudBooks = await res.json();
+                    if (Array.isArray(cloudBooks) && cloudBooks.length > 0) {
+                        allNotes = cloudBooks;
+                        renderNotesGrid();
+                        showToast(`Public Library Sync: Loaded ${cloudBooks.length} books!`);
+                    }
+                    if (dot) dot.className = "w-2 h-2 rounded-full bg-emerald-500";
+                    if (text) text.innerText = `Public Live: ${repo}`;
+                } else {
+                    if (dot) dot.className = "w-2 h-2 rounded-full bg-indigo-400";
+                    if (text) text.innerText = "Cloud Ready";
+                }
+            } catch (err) {
+                console.warn("Could not fetch public library.json from GitHub:", err);
+                if (dot) dot.className = "w-2 h-2 rounded-full bg-amber-400";
+                if (text) text.innerText = "Cloud Offline";
+            }
+        }
+
+        async function uploadPdfToGitHub(file, bookMetadata) {
+            if (!githubConfig.token || !githubConfig.owner || !githubConfig.repo) {
+                throw new Error("GitHub Admin Token missing! Configure in Repository Settings tab.");
+            }
+
+            const cleanFileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+            const pdfFilePath = `pdfs/${cleanFileName}`;
+            
+            // 1. Convert PDF File to Base64 safely
+            const arrayBuffer = await file.arrayBuffer();
+            const base64Content = bufferToBase64(arrayBuffer);
+
+            // 2. Upload PDF file to /pdfs/ folder in GitHub repo
+            const pdfApiUrl = `https://api.github.com/repos/${githubConfig.owner}/${githubConfig.repo}/contents/${pdfFilePath}`;
+            
+            const pdfUploadRes = await fetch(pdfApiUrl, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${githubConfig.token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: `Add PDF: ${bookMetadata.title}`,
+                    content: base64Content,
+                    branch: githubConfig.branch
+                })
+            });
+
+            if (!pdfUploadRes.ok) {
+                const errData = await pdfUploadRes.json();
+                throw new Error(errData.message || "Failed to commit PDF file to GitHub repo");
+            }
+
+            // Publicly accessible URL using jsDelivr CDN (Fast & CORS friendly for in-app webviews)
+            const cdnUrl = `https://cdn.jsdelivr.net/gh/${githubConfig.owner}/${githubConfig.repo}@${githubConfig.branch}/${pdfFilePath}`;
+
+            // 3. Fetch existing library.json catalog
+            const manifestApiUrl = `https://api.github.com/repos/${githubConfig.owner}/${githubConfig.repo}/contents/library.json`;
+            let manifestSha = null;
+            let currentLibrary = [];
+
+            try {
+                const manifestRes = await fetch(manifestApiUrl, {
+                    headers: { 'Authorization': `Bearer ${githubConfig.token}` }
+                });
+                if (manifestRes.ok) {
+                    const manifestData = await manifestRes.json();
+                    manifestSha = manifestData.sha;
+                    const decodedText = atob(manifestData.content.replace(/\n/g, ''));
+                    currentLibrary = JSON.parse(decodedText);
+                }
+            } catch (e) {
+                console.log("No existing library.json found, creating new one.");
+            }
+
+            // Construct full book object for public catalog
+            const newCloudBook = {
+                id: `gh-book-${Date.now()}`,
+                title: bookMetadata.title,
+                subject: bookMetadata.subject,
+                chapter: bookMetadata.chapter,
+                date: bookMetadata.date,
+                tags: bookMetadata.tags,
+                password: bookMetadata.password || '',
+                pdfUrl: cdnUrl
+            };
+
+            currentLibrary.unshift(newCloudBook);
+
+            // 4. Commit updated library.json back to GitHub
+            const updatedJsonBase64 = btoa(unescape(encodeURIComponent(JSON.stringify(currentLibrary, null, 2))));
+            
+            const updateManifestRes = await fetch(manifestApiUrl, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${githubConfig.token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: `Update public library catalog for ${bookMetadata.title}`,
+                    content: updatedJsonBase64,
+                    sha: manifestSha || undefined,
+                    branch: githubConfig.branch
+                })
+            });
+
+            if (!updateManifestRes.ok) {
+                throw new Error("PDF uploaded, but failed to update library.json catalog.");
+            }
+
+            allNotes = currentLibrary;
+            renderNotesGrid();
+            return newCloudBook;
+        }
+
+        async function updateGitHubCatalog() {
+            if (!githubConfig.token || !githubConfig.owner || !githubConfig.repo) {
+                localStorage.setItem('local_pdf_shelf', JSON.stringify(allNotes.filter(b => !b.pdfDoc)));
+                return;
+            }
+
+            try {
+                const manifestApiUrl = `https://api.github.com/repos/${githubConfig.owner}/${githubConfig.repo}/contents/library.json`;
+                let manifestSha = null;
+
+                const manifestRes = await fetch(manifestApiUrl, {
+                    headers: { 'Authorization': `Bearer ${githubConfig.token}` }
+                });
+                if (manifestRes.ok) {
+                    const manifestData = await manifestRes.json();
+                    manifestSha = manifestData.sha;
+                }
+
+                const updatedJsonBase64 = btoa(unescape(encodeURIComponent(JSON.stringify(allNotes, null, 2))));
+                
+                await fetch(manifestApiUrl, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${githubConfig.token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: `Update library settings`,
+                        content: updatedJsonBase64,
+                        sha: manifestSha || undefined,
+                        branch: githubConfig.branch
+                    })
+                });
+            } catch (e) {
+                console.warn("Catalog update error:", e);
+            }
+        }
+
+        function renderAdminFileList() {
+            const container = document.getElementById('adminFileList');
+            const badge = document.getElementById('adminFileCountBadge');
+            if (!container) return;
+
+            container.innerHTML = '';
+            badge.innerText = `${allNotes.length} Books`;
+
+            if (allNotes.length === 0) {
+                container.innerHTML = `<div class="text-center py-10 text-slate-400 text-xs">No flipbooks available.</div>`;
+                return;
+            }
+
+            allNotes.forEach(note => {
+                const item = document.createElement('div');
+                item.className = "p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl flex items-center justify-between space-x-3";
+                
+                const isLocked = !!note.password;
+
+                item.innerHTML = `
+                    <div class="flex items-center space-x-3 overflow-hidden">
+                        <div class="w-9 h-9 rounded-lg ${isLocked ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400' : 'bg-indigo-100 dark:bg-slate-700 text-indigo-600 dark:text-indigo-400'} flex items-center justify-center shrink-0">
+                            <i class="fa-solid ${isLocked ? 'fa-lock' : 'fa-file-pdf'} text-base"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <div class="flex items-center space-x-1.5">
+                                <h5 class="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">${note.title}</h5>
+                                ${isLocked ? '<span class="text-[9px] bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-bold px-1.5 py-0.5 rounded-md"><i class="fa-solid fa-key mr-0.5"></i> Protected</span>' : ''}
+                            </div>
+                            <p class="text-[10px] text-slate-500 dark:text-slate-400 truncate">${note.subject} • ${note.chapter}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-1.5 shrink-0">
+                        <button onclick="openSetPasswordModal('${note.id}')" class="px-2.5 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold transition flex items-center space-x-1" title="Set/Remove Password Protection">
+                            <i class="fa-solid fa-key text-[11px] text-indigo-500"></i>
+                            <span>Privacy</span>
+                        </button>
+                        <button onclick="deleteNote('${note.id}')" class="px-2.5 py-1.5 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-lg text-xs font-semibold transition flex items-center space-x-1" title="Delete Flipbook">
+                            <i class="fa-solid fa-trash-can text-[11px]"></i>
+                            <span>Delete</span>
+                        </button>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function deleteNote(id) {
+            allNotes = allNotes.filter(n => n.id !== id);
+            localStorage.setItem('local_pdf_shelf', JSON.stringify(allNotes));
+            updateGitHubCatalog();
+            renderNotesGrid();
+            renderAdminFileList();
+            showToast("Flipbook removed from shelf");
+        }
+
+        function renderNotesGrid() {
+            const grid = document.getElementById('notesGrid');
+            const emptyState = document.getElementById('emptyState');
+            const searchVal = document.getElementById('searchInput') ? document.getElementById('searchInput').value.toLowerCase() : '';
+
+            if (grid) grid.innerHTML = '';
+
+            const filtered = allNotes.filter(note => {
+                const matchesSubject = (activeSubject === 'ALL') || (note.subject === activeSubject);
+                const matchesSearch = note.title.toLowerCase().includes(searchVal) || 
+                                      note.chapter.toLowerCase().includes(searchVal) ||
+                                      note.tags.some(t => t.toLowerCase().includes(searchVal));
+                return matchesSubject && matchesSearch;
+            });
+
+            const badgeEl = document.getElementById('noteCountBadge');
+            if (badgeEl) {
+                badgeEl.innerHTML = `<i class="fa-solid fa-file-pdf text-red-500 mr-1.5"></i> ${filtered.length} PDF Flipbooks`;
+            }
+
+            if (filtered.length === 0) {
+                if (emptyState) emptyState.classList.remove('hidden');
+                return;
+            } else {
+                if (emptyState) emptyState.classList.add('hidden');
+            }
+
+            filtered.forEach(note => {
+                const badgeColor = note.subject === 'Physics' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' :
+                                 note.subject === 'Chemistry' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' :
+                                 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300';
+
+                const isLocked = !!note.password;
+
+                const card = document.createElement('div');
+                card.className = "group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 hover:shadow-2xl hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col justify-between relative overflow-hidden";
+                card.onclick = () => handleBookClick(note);
+
+                card.innerHTML = `
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-[11px] font-bold px-2.5 py-1 rounded-full ${badgeColor}">
+                                ${note.subject}
+                            </span>
+                            <div class="flex items-center space-x-1.5 text-[10px] text-slate-400 font-mono">
+                                ${isLocked ? '<span class="bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full font-bold border border-amber-500/20"><i class="fa-solid fa-lock text-[9px] mr-1"></i>Protected</span>' : ''}
+                                <span><i class="fa-regular fa-calendar mr-1"></i>${note.date}</span>
+                            </div>
+                        </div>
+                        <h3 class="font-heading font-bold text-base text-slate-800 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition line-clamp-2">${note.title}</h3>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">${note.chapter}</p>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                        <div class="flex space-x-1 overflow-hidden">
+                            ${note.tags.slice(0, 3).map(t => `<span class="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 px-2 py-0.5 rounded-md">#${t}</span>`).join('')}
+                        </div>
+                        <span class="text-xs font-semibold ${isLocked ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-600 dark:text-indigo-400'} flex items-center space-x-1">
+                            <span>${isLocked ? 'Unlock Reader' : 'Open Reader'}</span>
+                            <i class="fa-solid ${isLocked ? 'fa-key text-[10px]' : 'fa-arrow-right text-[11px]'} group-hover:translate-x-1 transition"></i>
+                        </span>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function handleBookClick(note) {
+            if (note.password && note.password.trim() !== '') {
+                pendingLockedBook = note;
+                document.getElementById('lockedBookTitle').innerText = note.title;
+                document.getElementById('bookPasswordInput').value = '';
+                document.getElementById('bookPasswordModal').classList.remove('hidden');
+            } else {
+                openFlipbook(note);
+            }
+        }
+
+        function closeBookPasswordModal() {
+            pendingLockedBook = null;
+            document.getElementById('bookPasswordModal').classList.add('hidden');
+        }
+
+        function verifyBookPassword() {
+            const input = document.getElementById('bookPasswordInput').value;
+            if (pendingLockedBook && input === pendingLockedBook.password) {
+                const bookToOpen = pendingLockedBook;
+                closeBookPasswordModal();
+                openFlipbook(bookToOpen);
+                showToast("Book unlocked!");
+            } else {
+                showToast("Incorrect Password!", "error");
+            }
+        }
+
+        function openSetPasswordModal(id) {
+            editingPasswordNoteId = id;
+            const target = allNotes.find(n => n.id === id);
+            if (target) {
+                document.getElementById('setNotePasswordInput').value = target.password || '';
+                document.getElementById('setNotePasswordModal').classList.remove('hidden');
+            }
+        }
+
+        function closeSetNotePasswordModal() {
+            editingPasswordNoteId = null;
+            document.getElementById('setNotePasswordModal').classList.add('hidden');
+        }
+
+        function saveNotePassword() {
+            if (!editingPasswordNoteId) return;
+            const target = allNotes.find(n => n.id === editingPasswordNoteId);
+            if (target) {
+                const newPass = document.getElementById('setNotePasswordInput').value;
+                target.password = newPass;
+                updateGitHubCatalog();
+                renderNotesGrid();
+                renderAdminFileList();
+                closeSetNotePasswordModal();
+                showToast("Privacy settings updated!");
+            }
+        }
+
+        /* 3D Reader Modal Controller & PDF Renderer */
+        async function openFlipbook(note) {
+            currentBook = note;
+            currentPage = 1;
+            currentZoom = 1.0;
+            uploadedPdfDoc = null;
+
+            document.getElementById('flipbookHeaderTitle').innerText = note.title;
+            document.getElementById('flipbookHeaderMeta').innerText = `${note.subject} • ${note.chapter}`;
+            document.getElementById('leftHeaderChapter').innerText = note.chapter || note.title;
+            document.getElementById('rightHeaderSubject').innerText = note.subject;
+
+            document.getElementById('flipbookModal').classList.remove('hidden');
+
+            const spinner = document.getElementById('pdfLoadingSpinner');
+
+            // If note contains a public CDN URL or PDF Object
+            if (note.pdfUrl || note.pdfDoc) {
+                if (spinner) spinner.classList.remove('hidden');
+                try {
+                    if (note.pdfDoc) {
+                        uploadedPdfDoc = note.pdfDoc;
+                    } else {
+                        // In-app browser fetch fallback fix for mobile webviews
+                        const fetchTask = pdfjsLib.getDocument({
+                            url: note.pdfUrl,
+                            cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+                            cMapPacked: true,
+                            disableRange: false,
+                            disableStream: false
+                        });
+                        uploadedPdfDoc = await fetchTask.promise;
+                    }
+                    totalPages = uploadedPdfDoc.numPages;
+                } catch (err) {
+                    console.error("PDF loading error inside webview:", err);
+                    showToast("Fallback: Loading PDF view...", "error");
+                    totalPages = 1;
+                } finally {
+                    if (spinner) spinner.classList.add('hidden');
+                }
+            } else if (note.pages && note.pages.length > 0) {
+                totalPages = note.pages.length;
+            } else {
+                totalPages = 1;
+            }
+
+            document.getElementById('totalPagesDisplay').innerText = `/ ${totalPages}`;
+            document.getElementById('pageSlider').max = totalPages;
+
+            // In mobile in-app browsers, default to single spread for high performance
+            if (window.innerWidth < 640) {
+                isDoubleSpread = false;
+            } else {
+                isDoubleSpread = true;
+            }
+
+            updateSpreadViewUI();
+            renderCurrentPages();
+            buildThumbnails();
+        }
+
+        function closeFlipbook() {
+            if (isAutoplay) stopAutoplay();
+            document.getElementById('flipbookModal').classList.add('hidden');
+            currentBook = null;
+        }
+
+        function updateSpreadViewUI() {
+            const leftPage = document.getElementById('leftBookPage');
+            const rightPage = document.getElementById('rightBookPage');
+            const divider = document.getElementById('bookSpineDivider');
+            const btn = document.getElementById('spreadToggleBtn');
+
+            if (!isDoubleSpread) {
+                leftPage.classList.add('hidden');
+                rightPage.classList.remove('w-1/2');
+                rightPage.classList.add('w-full');
+                if (divider) divider.classList.add('hidden');
+                if (btn) btn.innerHTML = `<i class="fa-regular fa-file text-indigo-400"></i>`;
+            } else {
+                leftPage.classList.remove('hidden');
+                rightPage.classList.remove('w-full');
+                rightPage.classList.add('w-1/2');
+                if (divider) divider.classList.remove('hidden');
+                if (btn) btn.innerHTML = `<i class="fa-solid fa-book-open text-indigo-400"></i>`;
+            }
+        }
+
+        function toggleSpreadMode() {
+            isDoubleSpread = !isDoubleSpread;
+            updateSpreadViewUI();
+            renderCurrentPages();
+        }
+
+        async function renderCurrentPages() {
+            if (!currentBook) return;
+
+            const leftContent = document.getElementById('leftPageContent');
+            const rightContent = document.getElementById('rightPageContent');
+            const leftNum = document.getElementById('leftPageNumDisplay');
+            const rightNum = document.getElementById('rightPageNumDisplay');
+
+            if (isDoubleSpread) {
+                let leftIdx = currentPage;
+                let rightIdx = currentPage + 1;
+
+                if (leftNum) leftNum.innerText = `Page ${leftIdx}`;
+                if (rightNum) rightNum.innerText = rightIdx <= totalPages ? `Page ${rightIdx}` : `End`;
+
+                renderSinglePageToContainer(leftIdx, leftContent);
+                if (rightIdx <= totalPages) {
+                    renderSinglePageToContainer(rightIdx, rightContent);
+                } else {
+                    rightContent.innerHTML = `<div class="text-slate-400 text-xs italic">End of Document</div>`;
+                }
+
+                document.getElementById('pageIndicatorText').innerText = `Spread ${Math.ceil(currentPage/2)} / ${Math.ceil(totalPages/2)}`;
+            } else {
+                if (rightNum) rightNum.innerText = `Page ${currentPage}`;
+                renderSinglePageToContainer(currentPage, rightContent);
+                document.getElementById('pageIndicatorText').innerText = `Page ${currentPage} / ${totalPages}`;
+            }
+
+            document.getElementById('pageNumberInput').value = currentPage;
+            document.getElementById('pageSlider').value = currentPage;
+
+            if (window.MathJax && window.MathJax.typesetPromise) {
+                window.MathJax.typesetPromise();
+            }
+        }
+
+        async function renderSinglePageToContainer(pageNum, container) {
+            container.innerHTML = '';
+
+            if (uploadedPdfDoc) {
+                try {
+                    const page = await uploadedPdfDoc.getPage(pageNum);
+                    const viewport = page.getViewport({ scale: 1.5 * currentZoom });
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+                    canvas.className = "pdf-page-canvas";
+
+                    const renderContext = {
+                        canvasContext: context,
+                        viewport: viewport
+                    };
+                    await page.render(renderContext).promise;
+                    container.appendChild(canvas);
+                } catch (e) {
+                    container.innerHTML = `<div class="p-4 text-xs text-red-400">Failed to render PDF page.</div>`;
+                }
+            } else if (currentBook.pages && currentBook.pages[pageNum - 1]) {
+                const div = document.createElement('div');
+                div.className = "w-full h-full overflow-y-auto custom-scrollbar";
+                div.innerHTML = currentBook.pages[pageNum - 1];
+                container.appendChild(div);
+            } else {
+                container.innerHTML = `<div class="text-slate-400 text-xs">Blank Page</div>`;
+            }
+        }
+
+        function nextFlipPage() {
+            const step = isDoubleSpread ? 2 : 1;
+            if (currentPage + step <= totalPages) {
+                currentPage += step;
+                playFlipSound();
+                renderCurrentPages();
+            }
+        }
+
+        function prevFlipPage() {
+            const step = isDoubleSpread ? 2 : 1;
+            if (currentPage - step >= 1) {
+                currentPage -= step;
+                playFlipSound();
+                renderCurrentPages();
+            }
+        }
+
+        function jumpToInputPage(val) {
+            let p = parseInt(val);
+            if (isNaN(p)) p = 1;
+            if (p < 1) p = 1;
+            if (p > totalPages) p = totalPages;
+            currentPage = p;
+            renderCurrentPages();
+        }
+
+        function onPageSliderChange(val) {
+            jumpToInputPage(val);
+        }
+
+        function changeZoom(delta) {
+            currentZoom = Math.max(0.5, Math.min(2.5, currentZoom + delta));
+            document.getElementById('zoomPercentDisplay').innerText = `${Math.round(currentZoom * 100)}%`;
+            renderCurrentPages();
+        }
+
+        function resetZoom() {
+            currentZoom = 1.0;
+            document.getElementById('zoomPercentDisplay').innerText = `100%`;
+            renderCurrentPages();
+        }
+
+        function setFlipbookTheme(theme) {
+            const stage = document.getElementById('flipbookStage');
+            if (!stage) return;
+            stage.className = stage.className.replace(/paper-\w+/g, '');
+            stage.classList.add(`paper-${theme}`);
+        }
+
+        function playFlipSound() {
+            if (!isSoundOn) return;
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.08);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.08);
+            } catch (e) {}
+        }
+
+        function toggleAudioSound() {
+            isSoundOn = !isSoundOn;
+            const icon = document.getElementById('soundIcon');
+            if (isSoundOn) {
+                icon.className = "fa-solid fa-volume-high text-emerald-400";
+                showToast("Page flip sound enabled");
+            } else {
+                icon.className = "fa-solid fa-volume-xmark text-slate-400";
+                showToast("Sound muted");
+            }
+        }
+
+        function toggleAutoplay() {
+            if (isAutoplay) {
+                stopAutoplay();
+            } else {
+                startAutoplay();
+            }
+        }
+
+        function startAutoplay() {
+            isAutoplay = true;
+            document.getElementById('autoplayIcon').className = "fa-solid fa-pause text-amber-400";
+            document.getElementById('autoplayText').innerText = "Pause";
+            autoplayInterval = setInterval(() => {
+                if (currentPage >= totalPages) {
+                    stopAutoplay();
+                } else {
+                    nextFlipPage();
+                }
+            }, 3000);
+            showToast("Autoplay presentation started");
+        }
+
+        function stopAutoplay() {
+            isAutoplay = false;
+            if (autoplayInterval) clearInterval(autoplayInterval);
+            document.getElementById('autoplayIcon').className = "fa-solid fa-play text-indigo-400";
+            document.getElementById('autoplayText').innerText = "Auto";
+        }
+
+        /* Thumbnails Panel */
+        function toggleThumbnailDrawer() {
+            const drawer = document.getElementById('thumbnailDrawer');
+            drawer.classList.toggle('translate-y-full');
+        }
+
+        function buildThumbnails() {
+            const grid = document.getElementById('thumbnailGrid');
+            if (!grid) return;
+            grid.innerHTML = '';
+
+            for (let i = 1; i <= totalPages; i++) {
+                const thumb = document.createElement('div');
+                thumb.className = `shrink-0 w-20 h-28 bg-slate-800 border ${i === currentPage ? 'border-indigo-500 ring-2 ring-indigo-500/50' : 'border-slate-700'} rounded-lg flex flex-col items-center justify-between p-1.5 cursor-pointer hover:border-indigo-400 transition`;
+                thumb.onclick = () => {
+                    currentPage = i;
+                    renderCurrentPages();
+                    toggleThumbnailDrawer();
+                };
+                thumb.innerHTML = `
+                    <div class="flex-1 flex items-center justify-center text-slate-500 text-[10px]">
+                        <i class="fa-solid fa-file-pdf text-lg text-indigo-400/60"></i>
+                    </div>
+                    <span class="text-[9px] font-mono text-slate-400">P. ${i}</span>
+                `;
+                grid.appendChild(thumb);
+            }
+        }
+
+        /* Search in Book Panel */
+        function toggleSearchDrawer() {
+            const drawer = document.getElementById('searchDrawer');
+            drawer.classList.toggle('translate-x-full');
+        }
+
+        function executeInBookSearch() {
+            const input = document.getElementById('inBookSearchInput').value.toLowerCase();
+            const resultsBox = document.getElementById('inBookSearchResults');
+            if (!resultsBox) return;
+
+            if (!input.trim()) {
+                resultsBox.innerHTML = `<p class="text-slate-400 text-[11px]">Type keywords above to search within book content.</p>`;
+                return;
+            }
+
+            resultsBox.innerHTML = `
+                <div onclick="jumpToInputPage(1)" class="p-2 bg-slate-800/60 rounded-lg hover:bg-slate-700 cursor-pointer">
+                    <span class="text-[10px] text-indigo-400 font-mono">Page 1</span>
+                    <p class="text-[11px] text-slate-200 line-clamp-2">...found match for "${input}" in textbook section...</p>
+                </div>
+            `;
+        }
+
+        /* Share Modal */
+        function openShareModal() {
+            document.getElementById('shareModal').classList.remove('hidden');
+        }
+
+        function closeShareModal() {
+            document.getElementById('shareModal').classList.add('hidden');
+        }
+
+        function copyShareLink() {
+            const input = document.getElementById('shareLinkInput');
+            input.select();
+            document.execCommand('copy');
+            showToast("Share link copied to clipboard!");
+        }
+
+        function copyEmbedCode() {
+            const input = document.getElementById('embedCodeInput');
+            input.select();
+            document.execCommand('copy');
+            showToast("Embed iframe code copied!");
+        }
+
+        /* Fullscreen Toggle */
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        /* File Upload Handler in Admin */
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            uploadedPdfFile = file;
+            document.getElementById('fileUploadNameLabel').innerText = `Selected: ${file.name} (${(file.size/1024/1024).toFixed(2)} MB)`;
+
+            // Auto fill title if empty
+            const titleInput = document.getElementById('noteTitleInput');
+            if (!titleInput.value) {
+                titleInput.value = file.name.replace(/\.pdf$/i, '').replace(/_/g, ' ');
+            }
+
+            // Load local document preview using FileReader Buffer
+            const reader = new FileReader();
+            reader.onload = async function() {
+                try {
+                    const typedarray = new Uint8Array(this.result);
+                    uploadedPdfDoc = await pdfjsLib.getDocument({ data: typedarray }).promise;
+                    showToast(`PDF loaded successfully! Total pages: ${uploadedPdfDoc.numPages}`);
+                } catch (err) {
+                    showToast("Error processing PDF file", "error");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        async function handleNotePublish(e) {
+            e.preventDefault();
+
+            const title = document.getElementById('noteTitleInput').value.trim();
+            const subject = document.getElementById('noteSubjectInput').value;
+            const chapter = document.getElementById('noteChapterInput').value.trim() || 'General';
+            const tags = document.getElementById('noteTagsInput').value.split(',').map(t => t.trim()).filter(Boolean);
+            const password = document.getElementById('notePasswordInput').value;
+
+            if (!uploadedPdfFile && !uploadedPdfDoc) {
+                showToast("Please choose a PDF file first!", "error");
+                return;
+            }
+
+            const btnText = document.getElementById('publishBtnText');
+            if (btnText) btnText.innerText = "Publishing PDF to GitHub Cloud...";
+
+            const bookMeta = {
+                title, subject, chapter,
+                tags: tags.length ? tags : ['Notes', 'PDF'],
+                password,
+                date: new Date().toISOString().split('T')[0]
+            };
+
+            try {
+                if (uploadedPdfFile && githubConfig.token) {
+                    // 1. Upload to GitHub Repo directly
+                    await uploadPdfToGitHub(uploadedPdfFile, bookMeta);
+                    showToast("Flipbook published directly to GitHub repository!");
+                } else {
+                    // 2. Local fallback mode
+                    const localBook = {
+                        id: `local-${Date.now()}`,
+                        ...bookMeta,
+                        pdfDoc: uploadedPdfDoc
+                    };
+                    allNotes.unshift(localBook);
+                    renderNotesGrid();
+                    showToast("Flipbook saved to local browser shelf!");
+                }
+
+                closeAdminModal();
+                document.getElementById('uploadNoteForm').reset();
+                document.getElementById('fileUploadNameLabel').innerText = "Click or Drag & Drop PDF file here";
+                uploadedPdfFile = null;
+                uploadedPdfDoc = null;
+            } catch (err) {
+                showToast(`Publish error: ${err.message}`, "error");
+            } finally {
+                if (btnText) btnText.innerText = "Publish PDF to Public Cloud Shelf";
+            }
+        }
+
+        /* General UI Helpers */
+        function switchSubject(subj) {
+            activeSubject = subj;
+            document.querySelectorAll('.nav-tab').forEach(t => {
+                t.className = "nav-tab px-4 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition-all";
+            });
+            const activeTab = document.getElementById(`tab-${subj}`);
+            if (activeTab) {
+                activeTab.className = "nav-tab px-4 py-1.5 text-xs font-semibold rounded-lg transition-all text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-700 shadow-sm";
+            }
+            renderNotesGrid();
+        }
+
+        function handleSearch() {
+            renderNotesGrid();
+        }
+
+        function toggleDarkMode() {
+            document.documentElement.classList.toggle('dark');
+            const isDark = document.documentElement.classList.contains('dark');
+            localStorage.setItem('theme_mode', isDark ? 'dark' : 'light');
+        }
+
+        function showToast(msg, type = "success") {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toastIcon');
+            const text = document.getElementById('toastMessage');
+
+            if (!toast) return;
+
+            text.innerText = msg;
+            if (type === "error") {
+                icon.className = "fa-solid fa-circle-exclamation text-red-400 text-base";
+            } else {
+                icon.className = "fa-solid fa-circle-check text-emerald-400 text-base";
+            }
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3500);
+        }
+
+        /* Initialization */
+        window.addEventListener('DOMContentLoaded', () => {
+            // Restore saved app theme
+            if (localStorage.getItem('theme_mode') === 'dark') {
+                document.documentElement.classList.add('dark');
+            }
+
+            // Sync from repository or local fallback
+            syncFromGitHub();
+        });
+    </script>
+</body>
+</html>
