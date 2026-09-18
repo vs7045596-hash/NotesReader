@@ -1735,53 +1735,5 @@
         });
     </script>
     
-document.addEventListener('DOMContentLoaded', () => {
-    // Select your flipbook container or pages
-    const flipbookArea = document.querySelector('.page-flip-container') || document.getElementById('flipbook');
-
-    if (!flipbookArea) return;
-
-    let lastTap = 0;
-
-    // 1. Handle Mobile Double-Tap
-    flipbookArea.addEventListener('touchend', (e) => {
-        const currentTime = new Date().getTime();
-        const tapLength = currentTime - lastTap;
-
-        if (tapLength < 300 && tapLength > 0) {
-            e.preventDefault(); // Prevent default double-tap zoom behavior of the browser
-            toggleDoubleTapZoom();
-        }
-        lastTap = currentTime;
-    });
-
-    // 2. Handle Desktop Double-Click
-    flipbookArea.addEventListener('dblclick', (e) => {
-        e.preventDefault();
-        toggleDoubleTapZoom();
-    });
-});
-
-// Toggle Zoom between 100% and 150% (or current zoomed state)
-function toggleDoubleTapZoom() {
-    if (typeof currentZoom === 'undefined') {
-        window.currentZoom = 100;
-    }
-
-    if (currentZoom > 100) {
-        // If already zoomed in, reset back to 100%
-        if (typeof resetZoom === 'function') {
-            resetZoom();
-        } else {
-            updateZoom(100);
-        }
-    } else {
-        // If normal size, zoom in to 150%
-        if (typeof updateZoom === 'function') {
-            updateZoom(150);
-        }
-    }
-}
-
 </body>
 </html>
