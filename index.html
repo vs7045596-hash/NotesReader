@@ -298,6 +298,27 @@
                     <i class="fa-solid fa-book-open text-indigo-400"></i>
                 </button>
 
+                <!-- Zoom Control Toolbar -->
+<div class="zoom-toolbar flex items-center gap-2 bg-slate-900/90 p-2 rounded-xl border border-slate-800 shadow-lg">
+    <!-- Zoom Out (-) Button -->
+    <button onclick="zoomOutBtnClick()" class="p-2 text-slate-200 hover:text-white hover:bg-slate-800 rounded-lg transition" title="Zoom Out">
+        <i class="fa-solid fa-minus text-sm"></i>
+    </button>
+
+    <!-- Zoom Percentage Display -->
+    <span id="zoomPercentage" class="text-xs font-medium text-slate-300 min-w-[45px] text-center">100%</span>
+
+    <!-- Zoom In (+) Button -->
+    <button onclick="zoomInBtnClick()" class="p-2 text-slate-200 hover:text-white hover:bg-slate-800 rounded-lg transition" title="Zoom In">
+        <i class="fa-solid fa-plus text-sm"></i>
+    </button>
+
+    <!-- Reset Zoom Button -->
+    <button onclick="resetZoomBtnClick()" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition" title="Reset Zoom">
+        <i class="fa-solid fa-rotate-left text-sm"></i>
+    </button>
+</div>
+
                 <!-- Theme Customizer -->
                 <div class="hidden md:flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700/60 space-x-1">
                     <button onclick="setFlipbookTheme('light')" class="w-5 h-5 rounded bg-white text-slate-900 flex items-center justify-center text-[10px] font-bold shadow-sm" title="Paper Light">A</button>
@@ -1722,5 +1743,57 @@
             syncFromGitHub();
         });
 
+        <script>
+// Zoom Step Configurations
+const ZOOM_STEP = 0.25; // Increases/decreases zoom by 25% per click
+const MIN_SCALE = 1.0;   // 100% minimum
+const MAX_SCALE = 3.0;   // 300% maximum
+
+/**
+ * Updates the viewport transform scale and syncs the percentage display badge.
+ */
+function applyScaleUpdate(newScale) {
+    const content = document.querySelector('.page-flip-container') || 
+                    document.getElementById('flipbook') || 
+                    document.querySelector('.df-container') || 
+                    document.querySelector('.stPageFlip');
+
+    if (!content) return;
+
+    // Clamp scale between MIN_SCALE and MAX_SCALE
+    window.currentScale = Math.min(Math.max(newScale, MIN_SCALE), MAX_SCALE);
+
+    // Reset position translation if zoomed back to 100%
+    if (window.currentScale === 1) {
+        window.posX = 0;
+        window.posY = 0;
+    }
+
+    // Apply matrix transformation with smooth transition
+    content.style.transition = 'transform 0.2s cubic-bezier(0.1, 0.57, 0.1, 1)';
+    content.style.transform = `translate3d(${window.posX || 0}px, ${window.posY || 0}px, 0px) scale(${window.currentScale})`;
+
+    // Update Percentage Badge UI
+    const zoomBadge = document.getElementById('zoomPercentage');
+    if (zoomBadge) {
+        zoomBadge.innerText = `${Math.round(window.currentScale * 100)}%`;
+    }
+}
+
+// Button Click Event Handlers
+function zoomInBtnClick() {
+    const current = window.currentScale || 1.0;
+    applyScaleUpdate(current + ZOOM_STEP);
+}
+
+function zoomOutBtnClick() {
+    const current = window.currentScale || 1.0;
+    applyScaleUpdate(current - ZOOM_STEP);
+}
+
+function resetZoomBtnClick() {
+    applyScaleUpdate(1.0);
+}
+</script>
 </body>
 </html>
