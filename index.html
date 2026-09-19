@@ -158,7 +158,15 @@
     </style>
 
     <script src="inapp-sync-fix.js"></script>
-    
+
+    <style> /* Enable smooth touch controls on the reader container */
+.page-flip-container, #flipbook, canvas {
+  touch-action: none !important; /* Prevents browser default scrolling/zooming */
+  user-select: none;
+  transform-origin: 0 0; /* Keeps zoom centered relative to touch coordinates */
+  will-change: transform;
+}
+   </style> 
 </head>
 <body class="bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-full font-sans transition-colors duration-200 select-none">
 
