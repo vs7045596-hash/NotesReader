@@ -1801,5 +1801,89 @@
         }
     })();
     </script>
+    <script>
+(function () {
+    const target = document.querySelector('.page-flip-container') || 
+                   document.getElementById('flipbook') || 
+                   document.querySelector('canvas');
+
+    if (!target) return;
+
+    let scale = 1;
+    let pointX = 0;
+    let pointY = 0;
+    let startX = 0;
+    let startY = 0;
+    let initialDist = 0;
+    let isDragging = false;
+
+    // Apply 2D Matrix Transformation (Scale + Translation)
+    function setTransform() {
+        target.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`;
+        
+        // Update Zoom Text indicator if present
+        const label = document.getElementById('zoomPercentage');
+        if (label) label.innerText = `${Math.round(scale * 100)}%`;
+    }
+
+    // Touch Event Handlers for Mobile (Pinch & Pan)
+    target.addEventListener('touchstart', function (e) {
+        if (e.touches.length === 2) {
+            // Calculate initial distance between two fingers
+            initialDist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+        } else if (e.touches.length === 1 && scale > 1) {
+            // Drag/Pan when zoomed in
+            isDragging = true;
+            startX = e.touches[0].clientX - pointX;
+            startY = e.touches[0].clientY - pointY;
+        }
+    }, { passive: false });
+
+    target.addEventListener('touchmove', function (e) {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            e.stopPropagation(); // Stop page turning gesture
+
+            const currentDist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+
+            const zoomFactor = currentDist / initialDist;
+            scale = Math.min(Math.max(scale * zoomFactor, 1), 3); // Restrict zoom between 100% and 300%
+            initialDist = currentDist;
+
+            if (scale === 1) { pointX = 0; pointY = 0; }
+            setTransform();
+        } else if (e.touches.length === 1 && isDragging && scale > 1) {
+            e.preventDefault();
+            e.stopPropagation(); // Stop page turning gesture while dragging zoomed page
+
+            pointX = e.touches[0].clientX - startX;
+            pointY = e.touches[0].clientY - startY;
+            setTransform();
+        }
+    }, { passive: false });
+
+    target.addEventListener('touchend', function (e) {
+        if (e.touches.length < 2) initialDist = 0;
+        if (e.touches.length === 0) isDragging = false;
+    });
+
+    // Desktop Mouse Wheel Zoom
+    target.addEventListener('wheel', function (e) {
+        if (e.ctrlKey || e.metaKey) { // Pinch touchpad gesture or Ctrl + Wheel
+            e.preventDefault();
+            const delta = e.deltaY < 0 ? 0.1 : -0.1;
+            scale = Math.min(Math.max(scale + delta, 1), 3);
+            if (scale === 1) { pointX = 0; pointY = 0; }
+            setTransform();
+        }
+    }, { passive: false });
+})();
+    </script>
 </body>
 </html>
